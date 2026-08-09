@@ -1,6 +1,6 @@
 {
   "name": "@limchihi/harness",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Project-local development harness for coding agents",
   "license": "MIT",
   "type": "module",

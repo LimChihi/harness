@@ -163,6 +163,41 @@ class FileSizeHintTests(unittest.TestCase):
         self.assertEqual(len(hints), 1)
         self.assertIn("new.py: 801 lines", hints[0])
 
+    def test_ignores_blacklisted_lock_files(self):
+        path = self.directory / "dependencies.lock"
+        path.write_text("line\n" * 770, encoding="utf-8")
+        command = self.update_patch("dependencies.lock", added=31)
+        pre_payload = self.payload(command, "PreToolUse")
+        post_payload = self.payload(command, "PostToolUse")
+
+        subprocess.run(
+            [sys.executable, MODULE_PATH],
+            input=json.dumps(pre_payload),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        path.write_text("line\n" * 801, encoding="utf-8")
+        post = subprocess.run(
+            [sys.executable, MODULE_PATH],
+            input=json.dumps(post_payload),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+
+        self.assertEqual(post.stdout, "")
+
+    def test_move_from_blacklisted_suffix_preserves_the_baseline(self):
+        original = self.directory / "generated.lock"
+        renamed = self.directory / "generated.py"
+        original.write_text("line\n" * 801, encoding="utf-8")
+        command = self.update_patch("generated.lock", move_to="generated.py")
+
+        hints = self.hints_after(command, lambda: original.rename(renamed))
+
+        self.assertEqual(hints, [])
+
     def test_move_does_not_count_existing_lines_as_growth(self):
         original = self.directory / "original.py"
         renamed = self.directory / "renamed.py"

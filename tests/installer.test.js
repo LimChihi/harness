@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cli = join(root, 'bin/harness.js');
+const packageVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 const hookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
 
@@ -103,7 +104,7 @@ test('installs at the Git root when invoked from a subdirectory', (t) => {
   const result = runInstall(subdirectory);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Installed @limchihi\/harness@0\.1\.0 in /);
+  assert.match(result.stdout, new RegExp(`Installed @limchihi/harness@${packageVersion} in `));
   assert.equal(readFileSync(join(path, '.codex/hooks.json'), 'utf8').length > 0, true);
 });
 

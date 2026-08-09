@@ -33,6 +33,8 @@ The hook observes `apply_patch` edits. It emits context when a file grows by mor
 - More than 1,200 lines: extract a coherent responsibility.
 - More than 1,400 lines: split the file before growing it further unless it is generated or data-only.
 
+Files with a suffix in `IGNORED_FILE_SUFFIXES` are skipped. The blacklist currently contains `.lock`.
+
 ## Update
 
 Install a newer package version over the existing project hook:
