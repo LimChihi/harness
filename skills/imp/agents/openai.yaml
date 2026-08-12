@@ -1,0 +1,6 @@
+interface:
+  display_name: "Imp"
+  short_description: "Start ticket worktrees and coordinate specs"
+  default_prompt: "Use $imp to start and implement the referenced ticket or spec."
+policy:
+  allow_implicit_invocation: false

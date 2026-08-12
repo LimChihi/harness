@@ -1,6 +1,6 @@
 # harness
 
-Project-local development hooks for coding agents.
+Project-local development tools for coding agents.
 
 ## Install
 
@@ -18,12 +18,24 @@ The installer writes:
 └── hooks/
     └── harness/
         └── file_size_hint.py
+.agents/
+└── skills/
+    └── imp/
+        ├── SKILL.md
+        ├── agents/openai.yaml
+        └── scripts/start.py
 ```
 
-Existing hooks in `.codex/hooks.json` are preserved. Re-running the command updates the harness-owned hook without adding duplicate configuration.
-Commit the generated `.codex/` files so the hook remains a property of the repository.
+Existing hooks in `.codex/hooks.json` are preserved. Re-running the command updates the harness-owned hook and skill without adding duplicate configuration.
+Commit the generated `.codex/` and `.agents/` files so the tools remain properties of the repository.
 
 After installation, open `/hooks` in Codex and trust the project hook.
+
+## Implementation entry point
+
+`$imp #123` accepts a GitHub ticket or a spec composed of tickets. It provides an isolated worktree for each selected ticket and delegates the work to the existing `/implement` skill. Independent tickets in a spec can be coordinated in parallel.
+
+The bundled start script uses `gh` to claim a ticket and Git to create or recover its `task/123` worktree. Repository-specific issue structure and worktree initialization remain properties of the target repository.
 
 ## File size hints
 
