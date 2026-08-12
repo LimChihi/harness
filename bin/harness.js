@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +12,9 @@ const fileSizeHookSource = join(packageRoot, 'hooks/file_size_hint.py');
 const fileSizeHookRelativePath = '.codex/hooks/harness/file_size_hint.py';
 const fileSizeHookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
+const legacyFileSizeHookRelativePath = '.codex/hooks/file_size_hint.py';
+const legacyFileSizeHookCommand =
+  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/file_size_hint.py"';
 const handoffHookSource = join(packageRoot, 'hooks/handoff.py');
 const handoffHookRelativePath = '.codex/hooks/harness/handoff.py';
 const handoffHookCommand =
@@ -96,13 +99,14 @@ async function readHooksConfig(path) {
   return config;
 }
 
-function installEvent(config, event, command, timeout, matcher) {
+function installEvent(config, event, command, timeout, matcher, obsoleteCommands = []) {
   const groups = config.hooks[event] ?? [];
   if (!Array.isArray(groups)) {
     throw new Error(`hooks.${event} must be an array`);
   }
 
   const retainedGroups = [];
+  let removedObsoleteCommand = false;
   for (const group of groups) {
     if (group === null || Array.isArray(group) || typeof group !== 'object') {
       throw new Error(`hooks.${event} entries must be objects`);
@@ -115,7 +119,16 @@ function installEvent(config, event, command, timeout, matcher) {
         throw new Error(`hooks.${event} handlers must be objects`);
       }
     }
-    const handlers = group.hooks.filter((handler) => handler?.command !== command);
+    const handlers = group.hooks.filter((handler) => {
+      if (handler.command === command) {
+        return false;
+      }
+      if (obsoleteCommands.includes(handler.command)) {
+        removedObsoleteCommand = true;
+        return false;
+      }
+      return true;
+    });
     if (handlers.length > 0) {
       retainedGroups.push({ ...group, hooks: handlers });
     }
@@ -135,6 +148,7 @@ function installEvent(config, event, command, timeout, matcher) {
   }
   retainedGroups.push(group);
   config.hooks[event] = retainedGroups;
+  return removedObsoleteCommand;
 }
 
 async function atomicWrite(path, contents, mode) {
@@ -149,8 +163,17 @@ async function install(repo) {
   const hooksPath = join(root, '.codex/hooks.json');
   const config = await readHooksConfig(hooksPath);
 
+  let removeLegacyFileSizeHook = false;
   for (const event of ['PreToolUse', 'PostToolUse']) {
-    installEvent(config, event, fileSizeHookCommand, 5, '^apply_patch$');
+    removeLegacyFileSizeHook =
+      installEvent(
+        config,
+        event,
+        fileSizeHookCommand,
+        5,
+        '^apply_patch$',
+        [legacyFileSizeHookCommand],
+      ) || removeLegacyFileSizeHook;
   }
   installEvent(config, 'Stop', handoffHookCommand, 30);
 
@@ -165,6 +188,9 @@ async function install(repo) {
     0o644,
   );
   await atomicWrite(hooksPath, `${JSON.stringify(config, null, 2)}\n`, 0o644);
+  if (removeLegacyFileSizeHook) {
+    await rm(join(root, legacyFileSizeHookRelativePath), { force: true });
+  }
   for (const file of skillFiles) {
     const source = join(packageRoot, 'skills/imp', file.path);
     const target = join(root, '.agents/skills/imp', file.path);
