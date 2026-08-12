@@ -56,9 +56,8 @@ def checked_out_at(root, branch):
     return None
 
 
-def claim(root, repository, issue):
-    viewer = gh(root, "api", "user", "--jq", ".login")
-    current = json.loads(
+def issue_view(root, repository, issue, fields):
+    return json.loads(
         gh(
             root,
             "issue",
@@ -67,9 +66,13 @@ def claim(root, repository, issue):
             "--repo",
             repository,
             "--json",
-            "state,assignees",
+            ",".join(fields),
         )
     )
+
+
+def claim(root, repository, issue, current):
+    viewer = gh(root, "api", "user", "--jq", ".login")
     if current["state"] != "OPEN":
         raise StartError(f"issue #{issue} is not open")
     assignees = [value["login"] for value in current["assignees"]]
@@ -90,6 +93,95 @@ def claim(root, repository, issue):
     return True
 
 
+def issue_ref(value, repository):
+    owner = value.get("repository", {}).get("nameWithOwner", repository)
+    prefix = "" if owner == repository else owner
+    return f"{prefix}#{value['number']}"
+
+
+def spec_report(root, repository, issue, sub_issues):
+    ready = []
+    blocked = []
+    open_issues = [
+        value for value in sub_issues["nodes"] if value["state"] == "OPEN"
+    ]
+    for value in open_issues:
+        owner = value.get("repository", {}).get("nameWithOwner", repository)
+        current = issue_view(root, owner, value["number"], ("blockedBy",))
+        blockers = [
+            blocker
+            for blocker in current["blockedBy"]["nodes"]
+            if blocker["state"] == "OPEN"
+        ]
+        if blockers:
+            blocked.append((value, blockers))
+        else:
+            ready.append(value)
+
+    lines = [f"SPEC {repository}#{issue}"]
+    lines.append(
+        "READY: "
+        + (", ".join(issue_ref(value, repository) for value in ready) or "none")
+    )
+    if blocked:
+        for value, blockers in blocked:
+            dependencies = ", ".join(
+                issue_ref(blocker, repository) for blocker in blockers
+            )
+            lines.append(f"BLOCKED: {issue_ref(value, repository)} by {dependencies}")
+    else:
+        lines.append("BLOCKED: none")
+    lines.append(f"COMPLETE: {'yes' if not open_issues else 'no'}")
+    return "\n".join(lines)
+
+
+def ticket_report(root, repository, default, issue, branch, worktree, created, claimed):
+    dirty = bool(git(worktree, "status", "--porcelain").stdout.strip())
+    head = git(worktree, "rev-parse", "--short=12", "HEAD").stdout.strip()
+    behind, ahead = git(
+        worktree,
+        "rev-list",
+        "--left-right",
+        "--count",
+        f"origin/{default}...HEAD",
+    ).stdout.split()
+    pull_requests = json.loads(
+        gh(
+            root,
+            "pr",
+            "list",
+            "--repo",
+            repository,
+            "--head",
+            branch,
+            "--state",
+            "all",
+            "--limit",
+            "1",
+            "--json",
+            "number,state,url",
+        )
+    )
+
+    lines = [f"TICKET {repository}#{issue}"]
+    lines.append(f"BRANCH: {branch}")
+    lines.append(f"WORKTREE: {worktree} ({'created' if created else 'recovered'})")
+    lines.append(f"ASSIGNMENT: {'claimed' if claimed else 'already claimed'}")
+    lines.append(
+        f"STATE: {'dirty' if dirty else 'clean'}; HEAD {head}; "
+        f"ahead {ahead}, behind {behind} vs origin/{default}"
+    )
+    if pull_requests:
+        pull_request = pull_requests[0]
+        lines.append(
+            f"PR: #{pull_request['number']} {pull_request['state']} "
+            f"{pull_request['url']}"
+        )
+    else:
+        lines.append("PR: none")
+    return "\n".join(lines)
+
+
 def start(issue):
     root = Path(
         run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
@@ -104,15 +196,29 @@ def start(issue):
     )
     repository = metadata["nameWithOwner"]
     default = metadata["defaultBranchRef"]["name"]
+    current = issue_view(
+        root, repository, issue, ("state", "assignees", "subIssues")
+    )
+    if current["subIssues"]["totalCount"]:
+        return spec_report(root, repository, issue, current["subIssues"])
+
     branch = f"task/{issue}"
 
+    git(
+        root,
+        "fetch",
+        "origin",
+        f"+refs/heads/{default}:refs/remotes/origin/{default}",
+    )
     git(root, "worktree", "prune")
     existing = checked_out_at(root, branch)
     if existing is not None:
         if not existing.is_dir():
             raise StartError(f"worktree is missing: {existing}")
-        claimed = claim(root, repository, issue)
-        return repository, branch, existing, False, claimed
+        claimed = claim(root, repository, issue, current)
+        return ticket_report(
+            root, repository, default, issue, branch, existing, False, claimed
+        )
 
     worktree = (
         primary.parent / ".worktrees" / f"{repository.replace('/', '-')}-{issue}"
@@ -133,15 +239,15 @@ def start(issue):
             allowed=(0, 2),
         )
         source = f"origin/{branch}" if remote.returncode == 0 else f"origin/{default}"
-        source_branch = branch if remote.returncode == 0 else default
-        git(
-            root,
-            "fetch",
-            "origin",
-            f"+refs/heads/{source_branch}:refs/remotes/origin/{source_branch}",
-        )
+        if remote.returncode == 0:
+            git(
+                root,
+                "fetch",
+                "origin",
+                f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
+            )
 
-    claimed = claim(root, repository, issue)
+    claimed = claim(root, repository, issue, current)
     worktree.parent.mkdir(parents=True, exist_ok=True)
     try:
         arguments = ["worktree", "add"]
@@ -164,12 +270,14 @@ def start(issue):
                 "@me",
             )
         raise
-    return repository, branch, worktree, True, claimed
+    return ticket_report(
+        root, repository, default, issue, branch, worktree, True, claimed
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Claim a GitHub issue and prepare its task worktree."
+        description="Inspect a GitHub spec or prepare a ticket worktree."
     )
     parser.add_argument("issue", help="Issue number, with or without a leading #")
     arguments = parser.parse_args()
@@ -177,20 +285,7 @@ def main():
     if match is None:
         raise StartError(f"invalid issue: {arguments.issue}")
     issue = int(match.group(1))
-    repository, branch, worktree, created, claimed = start(issue)
-    print(
-        json.dumps(
-            {
-                "repository": repository,
-                "issue": issue,
-                "branch": branch,
-                "worktree": str(worktree),
-                "created": created,
-                "claimed": claimed,
-            },
-            sort_keys=True,
-        )
-    )
+    print(start(issue))
 
 
 if __name__ == "__main__":

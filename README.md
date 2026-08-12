@@ -35,7 +35,7 @@ After installation, open `/hooks` in Codex and trust the project hook.
 
 `$imp #123` accepts a GitHub ticket or a spec composed of tickets. It provides an isolated worktree for each selected ticket and delegates the work to the existing `/implement` skill. Independent tickets in a spec can be coordinated in parallel.
 
-The bundled start script uses `gh` to claim a ticket and Git to create or recover its `task/123` worktree. Repository-specific issue structure and worktree initialization remain properties of the target repository.
+The bundled start script identifies specs before mutation and reports their ready and blocked tickets. For a leaf ticket, it uses `gh` to claim the issue and Git to create or recover its `task/123` worktree, then reports the worktree, branch state, and existing pull request. Repository-specific worktree initialization remains a property of the target repository.
 
 ## File size hints
 

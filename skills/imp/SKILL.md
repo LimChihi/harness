@@ -4,12 +4,12 @@ description: Start implementation from a ticket or spec.
 disable-model-invocation: true
 ---
 
-Read the repository guidance and tracker context around the referenced work. A leaf ticket is an implementation scope; a spec with delivery tickets is a coordination scope.
+Read the repository guidance that governs implementation, worktrees, and pull requests.
 
-The bundled `scripts/start.py ISSUE` discovers the current Git repository, claims an open GitHub issue for the current user, and creates or recovers its isolated `task/ISSUE` worktree. Its JSON output provides the repository, branch, worktree, and actions taken.
+Run the bundled `scripts/start.py ISSUE`. Its report begins with `TICKET` or `SPEC`; follow that branch.
 
-For a ticket, prepare its worktree and run `/implement` there.
+For `TICKET`, work only in the reported worktree. Inspect any reported dirty state before editing. If the branch is behind the default branch, follow the repository's synchronization workflow before running `/implement` there. Complete the repository's normal handoff through a pull request to the default branch. Leave merging to the repository's review workflow.
 
-For a spec, the current agent can coordinate its unblocked ticket frontier. Independent tickets can run in parallel in separate prepared worktrees, with each worker running `/implement` for its ticket. Repository guidance, dependencies, and available workers inform the grouping.
+For `SPEC`, create no worktree for the spec itself. Start every `READY` ticket that fits the available workers. For each, run this skill's script for that ticket, then have a worker run `/implement` in its reported worktree. `BLOCKED` tickets wait. After a ticket pull request merges, rerun the script for the spec to refresh the frontier.
 
-Completed ticket branches integrate into the repository's default branch through its normal pull-request workflow.
+The spec is complete only when the report says `COMPLETE: yes`. When the remaining frontier depends on review, merge, or another external action, report that boundary and stop.
