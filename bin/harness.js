@@ -8,12 +8,14 @@ import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-const hookSource = join(packageRoot, 'hooks/file_size_hint.py');
-const hookRelativePath = '.codex/hooks/harness/file_size_hint.py';
-const hookCommand =
+const fileSizeHookSource = join(packageRoot, 'hooks/file_size_hint.py');
+const fileSizeHookRelativePath = '.codex/hooks/harness/file_size_hint.py';
+const fileSizeHookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
-const hookMatcher = '^apply_patch$';
-const hookEvents = ['PreToolUse', 'PostToolUse'];
+const handoffHookSource = join(packageRoot, 'hooks/handoff.py');
+const handoffHookRelativePath = '.codex/hooks/harness/handoff.py';
+const handoffHookCommand =
+  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/handoff.py"';
 const skillFiles = [
   { path: 'SKILL.md', mode: 0o644 },
   { path: 'agents/openai.yaml', mode: 0o644 },
@@ -21,12 +23,14 @@ const skillFiles = [
 ];
 
 function usage() {
-  return `Usage: harness install [--repo <path>]
+  return `Usage: harness <command> [options]
 
-Install the project-local agent tools into a Git repository.
+Commands:
+  install  Install the project-local agent tools into a Git repository
+  state    Report the current Git and GitHub handoff state
 
 Options:
-  --repo <path>  Repository or subdirectory to install from (default: cwd)
+  --repo <path>  Repository or subdirectory to use (default: cwd)
   -h, --help     Show this help
   -v, --version  Show the package version`;
 }
@@ -44,7 +48,7 @@ function repositoryRoot(start) {
   }
 }
 
-function parseInstallArguments(args) {
+function parseRepositoryArguments(args) {
   let repo = process.cwd();
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -92,7 +96,7 @@ async function readHooksConfig(path) {
   return config;
 }
 
-function installEvent(config, event) {
+function installEvent(config, event, command, timeout, matcher) {
   const groups = config.hooks[event] ?? [];
   if (!Array.isArray(groups)) {
     throw new Error(`hooks.${event} must be an array`);
@@ -111,22 +115,25 @@ function installEvent(config, event) {
         throw new Error(`hooks.${event} handlers must be objects`);
       }
     }
-    const handlers = group.hooks.filter((handler) => handler?.command !== hookCommand);
+    const handlers = group.hooks.filter((handler) => handler?.command !== command);
     if (handlers.length > 0) {
       retainedGroups.push({ ...group, hooks: handlers });
     }
   }
 
-  retainedGroups.push({
-    matcher: hookMatcher,
+  const group = {
     hooks: [
       {
         type: 'command',
-        command: hookCommand,
-        timeout: 5,
+        command,
+        timeout,
       },
     ],
-  });
+  };
+  if (matcher !== undefined) {
+    group.matcher = matcher;
+  }
+  retainedGroups.push(group);
   config.hooks[event] = retainedGroups;
 }
 
@@ -140,15 +147,23 @@ async function atomicWrite(path, contents, mode) {
 async function install(repo) {
   const root = repositoryRoot(repo);
   const hooksPath = join(root, '.codex/hooks.json');
-  const destination = join(root, hookRelativePath);
   const config = await readHooksConfig(hooksPath);
-  const hook = await readFile(hookSource);
 
-  for (const event of hookEvents) {
-    installEvent(config, event);
+  for (const event of ['PreToolUse', 'PostToolUse']) {
+    installEvent(config, event, fileSizeHookCommand, 5, '^apply_patch$');
   }
+  installEvent(config, 'Stop', handoffHookCommand, 30);
 
-  await atomicWrite(destination, hook, 0o644);
+  await atomicWrite(
+    join(root, fileSizeHookRelativePath),
+    await readFile(fileSizeHookSource),
+    0o644,
+  );
+  await atomicWrite(
+    join(root, handoffHookRelativePath),
+    await readFile(handoffHookSource),
+    0o644,
+  );
   await atomicWrite(hooksPath, `${JSON.stringify(config, null, 2)}\n`, 0o644);
   for (const file of skillFiles) {
     const source = join(packageRoot, 'skills/imp', file.path);
@@ -157,10 +172,26 @@ async function install(repo) {
   }
 
   console.log(`Installed ${packageJson.name}@${packageJson.version} in ${root}`);
-  console.log(`  ${hookRelativePath}`);
+  console.log(`  ${fileSizeHookRelativePath}`);
+  console.log(`  ${handoffHookRelativePath}`);
   console.log('  .codex/hooks.json');
   console.log('  .agents/skills/imp/');
   console.log('Review and trust the project hook with /hooks in Codex.');
+}
+
+function state(repo) {
+  const root = repositoryRoot(repo);
+  try {
+    const output = execFileSync(
+      '/usr/bin/python3',
+      [handoffHookSource, 'state', '--repo', root],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    process.stdout.write(output);
+  } catch (error) {
+    const detail = error.stderr?.toString().trim() || error.message;
+    throw new Error(`cannot inspect handoff state: ${detail}`);
+  }
 }
 
 async function main() {
@@ -173,13 +204,17 @@ async function main() {
     console.log(packageJson.version);
     return;
   }
-  if (command !== 'install') {
+  if (!['install', 'state'].includes(command)) {
     throw new Error(`unknown command: ${command}`);
   }
 
-  const options = parseInstallArguments(args);
+  const options = parseRepositoryArguments(args);
   if (options !== null) {
-    await install(options.repo);
+    if (command === 'install') {
+      await install(options.repo);
+    } else {
+      state(options.repo);
+    }
   }
 }
 
