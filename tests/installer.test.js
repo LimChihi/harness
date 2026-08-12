@@ -13,6 +13,8 @@ const hookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
 const handoffHookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/handoff.py"';
+const legacyHookCommand =
+  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/file_size_hint.py"';
 
 function repository(t) {
   const path = mkdtempSync(join(tmpdir(), 'harness-installer-'));
@@ -121,6 +123,44 @@ test('reinstall is idempotent', (t) => {
     handlers(config, 'Stop').filter((hook) => hook.command === handoffHookCommand).length,
     1,
   );
+});
+
+test('migrates the legacy file-size hook', (t) => {
+  const path = repository(t);
+  const hooksPath = join(path, '.codex/hooks.json');
+  const legacyHookPath = join(path, '.codex/hooks/file_size_hint.py');
+  mkdirSync(dirname(legacyHookPath), { recursive: true });
+  writeFileSync(legacyHookPath, 'legacy hook\n');
+  writeFileSync(
+    hooksPath,
+    JSON.stringify({
+      hooks: Object.fromEntries(
+        ['PreToolUse', 'PostToolUse'].map((event) => [
+          event,
+          [
+            {
+              matcher: '^apply_patch$',
+              hooks: [{ type: 'command', command: legacyHookCommand, timeout: 5 }],
+            },
+          ],
+        ]),
+      ),
+    }),
+  );
+
+  const result = runInstall(path);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.throws(() => readFileSync(legacyHookPath));
+  const config = JSON.parse(readFileSync(hooksPath, 'utf8'));
+  for (const event of ['PreToolUse', 'PostToolUse']) {
+    assert.deepEqual(config.hooks[event], [
+      {
+        matcher: '^apply_patch$',
+        hooks: [{ type: 'command', command: hookCommand, timeout: 5 }],
+      },
+    ]);
+  }
 });
 
 test('installs at the Git root when invoked from a subdirectory', (t) => {
