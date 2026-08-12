@@ -189,7 +189,11 @@ def lifecycle_hint(state):
             f"Handoff incomplete: open a pull request with gh pr create --base "
             f"{state['default']} --head {branch}."
         )
-    return None
+    return (
+        f"PR #{pull['number']} is open: inspect its reviews, checks, and mergeability "
+        "every 4 minutes; fix and resolve review feedback, CI failures, and conflicts "
+        "until the PR merges."
+    )
 
 
 def run_hook(payload):

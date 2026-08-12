@@ -130,7 +130,7 @@ else:
         self.assertIn("REMOTE: unpublished\n", result.stdout)
         self.assertTrue(result.stdout.endswith("PR: none\n"))
 
-    def test_stop_guides_commit_push_and_pull_request_then_stays_silent(self):
+    def test_stop_guides_commit_push_pull_request_and_review_monitoring(self):
         run("git", "switch", "-c", "task/2", cwd=self.repo)
         (self.repo / "ticket.txt").write_text("ticket\n", encoding="utf-8")
 
@@ -154,9 +154,19 @@ else:
         self.assertIn("gh pr create --base trunk --head task/2", published.stdout)
 
         self.set_pull_request()
-        healthy = self.hook()
-        self.assertEqual(healthy.returncode, 0, healthy.stderr)
-        self.assertEqual(healthy.stdout, "")
+        monitoring = self.hook()
+        self.assertEqual(monitoring.returncode, 0, monitoring.stderr)
+        self.assertEqual(
+            json.loads(monitoring.stdout),
+            {
+                "decision": "block",
+                "reason": (
+                    "PR #9 is open: inspect its reviews, checks, and mergeability "
+                    "every 4 minutes; fix and resolve review feedback, CI failures, "
+                    "and conflicts until the PR merges."
+                ),
+            },
+        )
 
     def test_stop_is_silent_on_the_default_branch(self):
         result = self.hook()

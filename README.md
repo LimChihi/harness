@@ -48,7 +48,7 @@ Inspect the current worktree, default-branch relationship, remote publication, a
 npx @limchihi/harness state
 ```
 
-The installed `Stop` hook consumes the same state. It stays silent when the handoff is healthy and asks the agent to continue only when committing, pushing, or opening a pull request is the single clear missing step.
+The installed `Stop` hook consumes the same state. It asks the agent to continue when committing, pushing, or opening a pull request is the single clear missing step. While a pull request is open, it keeps the agent monitoring reviews, checks, and mergeability every four minutes so feedback, CI failures, and conflicts are resolved before merge.
 
 ## File size hints
 
