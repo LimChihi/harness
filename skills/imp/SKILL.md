@@ -12,4 +12,4 @@ For a ticket, prepare its worktree and run `/implement` there.
 
 For a spec, the current agent can coordinate its unblocked ticket frontier. Independent tickets can run in parallel in separate prepared worktrees, with each worker running `/implement` for its ticket. Repository guidance, dependencies, and available workers inform the grouping.
 
-Completed ticket branches integrate through the repository's normal pull-request workflow.
+Completed ticket branches integrate into the repository's default branch through its normal pull-request workflow.
