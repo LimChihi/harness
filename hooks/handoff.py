@@ -172,7 +172,7 @@ def lifecycle_hint(state):
     pull = state["pull_request"]
     if branch is None or branch == state["default"]:
         return None
-    if pull is not None and pull["state"] in {"CLOSED", "MERGED"}:
+    if pull is not None and pull["state"] == "MERGED":
         return None
     if state["dirty"]:
         return "Handoff incomplete: commit the working tree with git commit."
@@ -183,11 +183,24 @@ def lifecycle_hint(state):
     if state["remote"] != state["head"]:
         if is_ancestor(Path(state["worktree"]), state["remote"], state["head"]):
             return "Handoff incomplete: publish HEAD with git push."
-        return None
+        return (
+            f"Handoff incomplete: local {branch} and origin/{branch} have diverged; "
+            "inspect both histories, reconcile them explicitly, and publish the result."
+        )
     if pull is None:
         return (
             f"Handoff incomplete: open a pull request with gh pr create --base "
             f"{state['default']} --head {branch}."
+        )
+    if pull["state"] == "CLOSED":
+        return (
+            f"Handoff incomplete: PR #{pull['number']} was closed without merging; "
+            "inspect it, then reopen it or create a replacement pull request."
+        )
+    if pull["baseRefName"] != state["default"]:
+        return (
+            f"Handoff incomplete: PR #{pull['number']} targets {pull['baseRefName']}; "
+            f"open the delivery pull request against {state['default']}."
         )
     return (
         f"PR #{pull['number']} is open: inspect its reviews, checks, and mergeability "

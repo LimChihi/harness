@@ -94,16 +94,16 @@ else:
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.repo)}),
         )
 
-    def set_pull_request(self):
+    def set_pull_request(self, pr_state="OPEN", base="trunk"):
         state = json.loads(self.state.read_text(encoding="utf-8"))
         head = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
         state["prs"]["task/2"] = [
             {
                 "number": 9,
-                "state": "OPEN",
+                "state": pr_state,
                 "url": "https://github.com/owner/project/pull/9",
                 "headRefOid": head,
-                "baseRefName": "trunk",
+                "baseRefName": base,
             }
         ]
         self.state.write_text(json.dumps(state), encoding="utf-8")
@@ -173,6 +173,43 @@ else:
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_stop_blocks_closed_unmerged_pull_request(self):
+        self.create_task_commit()
+        run("git", "push", "-u", "origin", "task/2", cwd=self.repo)
+        self.set_pull_request(pr_state="CLOSED")
+
+        result = self.hook()
+
+        self.assertIn("PR #9 was closed without merging", result.stdout)
+        self.assertIn("reopen it or create a replacement", result.stdout)
+
+    def test_stop_blocks_diverged_local_and_remote_histories(self):
+        self.create_task_commit()
+        run("git", "push", "-u", "origin", "task/2", cwd=self.repo)
+        remote_head = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+        run("git", "reset", "--hard", "HEAD^", cwd=self.repo)
+        (self.repo / "replacement.txt").write_text("replacement\n", encoding="utf-8")
+        run("git", "add", "replacement.txt", cwd=self.repo)
+        run("git", "commit", "-m", "Replacement", cwd=self.repo)
+
+        result = self.hook()
+
+        self.assertNotEqual(
+            run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip(), remote_head
+        )
+        self.assertIn("local task/2 and origin/task/2 have diverged", result.stdout)
+        self.assertIn("reconcile them explicitly", result.stdout)
+
+    def test_stop_requires_pull_request_to_target_default_branch(self):
+        self.create_task_commit()
+        run("git", "push", "-u", "origin", "task/2", cwd=self.repo)
+        self.set_pull_request(base="staging")
+
+        result = self.hook()
+
+        self.assertIn("PR #9 targets staging", result.stdout)
+        self.assertIn("against trunk", result.stdout)
 
 
 if __name__ == "__main__":
