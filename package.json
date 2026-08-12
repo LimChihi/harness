@@ -1,6 +1,6 @@
 {
   "name": "@limchihi/harness",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Project-local development harness for coding agents",
   "license": "MIT",
   "type": "module",
@@ -10,6 +10,7 @@
   "files": [
     "bin/",
     "hooks/file_size_hint.py",
+    "hooks/handoff.py",
     "skills/imp/SKILL.md",
     "skills/imp/agents/openai.yaml",
     "skills/imp/scripts/start.py",

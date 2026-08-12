@@ -17,7 +17,8 @@ The installer writes:
 ├── hooks.json
 └── hooks/
     └── harness/
-        └── file_size_hint.py
+        ├── file_size_hint.py
+        └── handoff.py
 .agents/
 └── skills/
     └── imp/
@@ -36,6 +37,18 @@ After installation, open `/hooks` in Codex and trust the project hook.
 `$imp #123` accepts a GitHub ticket or a spec composed of tickets. It provides an isolated worktree for each selected ticket and delegates the work to the existing `/implement` skill. Independent tickets in a spec can be coordinated in parallel.
 
 The bundled start script identifies specs before mutation and reports their ready and blocked tickets. For a leaf ticket, it uses `gh` to claim the issue and Git to create or recover its `task/123` worktree, then reports the worktree, branch state, and existing pull request. Repository-specific worktree initialization remains a property of the target repository.
+
+After implementation, use the repository's normal check command followed by ordinary `git commit`, `git push`, and GitHub pull-request tools. Harness does not wrap those operations.
+
+## Handoff state
+
+Inspect the current worktree, default-branch relationship, remote publication, and pull request without changing repository state:
+
+```bash
+npx @limchihi/harness state
+```
+
+The installed `Stop` hook consumes the same state. It stays silent when the handoff is healthy and asks the agent to continue only when committing, pushing, or opening a pull request is the single clear missing step.
 
 ## File size hints
 

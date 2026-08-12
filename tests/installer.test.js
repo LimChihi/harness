@@ -11,6 +11,8 @@ const cli = join(root, 'bin/harness.js');
 const packageVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 const hookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
+const handoffHookCommand =
+  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/handoff.py"';
 
 function repository(t) {
   const path = mkdtempSync(join(tmpdir(), 'harness-installer-'));
@@ -40,6 +42,10 @@ test('installs the hook and project configuration', (t) => {
     /MAX_UNPROMPTED_GROWTH = 30/,
   );
   assert.match(
+    readFileSync(join(path, '.codex/hooks/harness/handoff.py'), 'utf8'),
+    /def lifecycle_hint/,
+  );
+  assert.match(
     readFileSync(join(path, '.agents/skills/imp/SKILL.md'), 'utf8'),
     /run `\/implement`/,
   );
@@ -60,6 +66,11 @@ test('installs the hook and project configuration', (t) => {
       },
     ]);
   }
+  assert.deepEqual(config.hooks.Stop, [
+    {
+      hooks: [{ type: 'command', command: handoffHookCommand, timeout: 30 }],
+    },
+  ]);
 });
 
 test('preserves existing hooks', (t) => {
@@ -106,6 +117,10 @@ test('reinstall is idempotent', (t) => {
   for (const event of ['PreToolUse', 'PostToolUse']) {
     assert.equal(handlers(config, event).filter((hook) => hook.command === hookCommand).length, 1);
   }
+  assert.equal(
+    handlers(config, 'Stop').filter((hook) => hook.command === handoffHookCommand).length,
+    1,
+  );
 });
 
 test('installs at the Git root when invoked from a subdirectory', (t) => {
@@ -131,5 +146,6 @@ test('fails before writing when hooks.json is invalid', (t) => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /^harness:/);
   assert.throws(() => readFileSync(join(path, '.codex/hooks/harness/file_size_hint.py')));
+  assert.throws(() => readFileSync(join(path, '.codex/hooks/harness/handoff.py')));
   assert.equal(readFileSync(hooksPath, 'utf8'), '{');
 });
