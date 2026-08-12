@@ -52,6 +52,10 @@ test('installs the hook and project configuration', (t) => {
     /run `\/implement`/,
   );
   assert.match(
+    readFileSync(join(path, '.agents/skills/imp/SKILL.md'), 'utf8'),
+    /npx @limchihi\/harness state/,
+  );
+  assert.match(
     readFileSync(join(path, '.agents/skills/imp/scripts/start.py'), 'utf8'),
     /task\/\{issue\}/,
   );
