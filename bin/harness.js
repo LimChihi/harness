@@ -14,11 +14,16 @@ const hookCommand =
   '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
 const hookMatcher = '^apply_patch$';
 const hookEvents = ['PreToolUse', 'PostToolUse'];
+const skillFiles = [
+  { path: 'SKILL.md', mode: 0o644 },
+  { path: 'agents/openai.yaml', mode: 0o644 },
+  { path: 'scripts/start.py', mode: 0o755 },
+];
 
 function usage() {
   return `Usage: harness install [--repo <path>]
 
-Install the project-local Codex hooks into a Git repository.
+Install the project-local agent tools into a Git repository.
 
 Options:
   --repo <path>  Repository or subdirectory to install from (default: cwd)
@@ -145,10 +150,16 @@ async function install(repo) {
 
   await atomicWrite(destination, hook, 0o644);
   await atomicWrite(hooksPath, `${JSON.stringify(config, null, 2)}\n`, 0o644);
+  for (const file of skillFiles) {
+    const source = join(packageRoot, 'skills/imp', file.path);
+    const target = join(root, '.agents/skills/imp', file.path);
+    await atomicWrite(target, await readFile(source), file.mode);
+  }
 
   console.log(`Installed ${packageJson.name}@${packageJson.version} in ${root}`);
   console.log(`  ${hookRelativePath}`);
   console.log('  .codex/hooks.json');
+  console.log('  .agents/skills/imp/');
   console.log('Review and trust the project hook with /hooks in Codex.');
 }
 

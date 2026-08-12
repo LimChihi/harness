@@ -39,6 +39,18 @@ test('installs the hook and project configuration', (t) => {
     readFileSync(join(path, '.codex/hooks/harness/file_size_hint.py'), 'utf8'),
     /MAX_UNPROMPTED_GROWTH = 30/,
   );
+  assert.match(
+    readFileSync(join(path, '.agents/skills/imp/SKILL.md'), 'utf8'),
+    /run `\/implement`/,
+  );
+  assert.match(
+    readFileSync(join(path, '.agents/skills/imp/scripts/start.py'), 'utf8'),
+    /task\/\{issue\}/,
+  );
+  assert.match(
+    readFileSync(join(path, '.agents/skills/imp/agents/openai.yaml'), 'utf8'),
+    /allow_implicit_invocation: false/,
+  );
   const config = JSON.parse(readFileSync(join(path, '.codex/hooks.json'), 'utf8'));
   for (const event of ['PreToolUse', 'PostToolUse']) {
     assert.deepEqual(config.hooks[event], [

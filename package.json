@@ -10,11 +10,14 @@
   "files": [
     "bin/",
     "hooks/file_size_hint.py",
+    "skills/imp/SKILL.md",
+    "skills/imp/agents/openai.yaml",
+    "skills/imp/scripts/start.py",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/installer.test.js && python3 -m unittest discover -s tests -p 'test_file_size_hint.py'",
+    "test": "node --test tests/installer.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
     "prepublishOnly": "npm test"
   },
   "engines": {
