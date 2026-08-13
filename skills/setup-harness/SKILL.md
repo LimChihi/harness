@@ -49,7 +49,9 @@ Read what exists; assume nothing:
 Run this skill's `scripts/install_hooks.py`. It points both agents at the hooks
 inside this skill and preserves every other hook the repository already ran, so
 `npx skills@latest update` is the whole update story: the configuration keeps
-naming a path whose contents the update refreshes. Ask nothing here.
+naming a path whose contents the update refreshes. It rewrites the same bytes
+every run, so ask nothing here and run it whether or not the hooks are already
+wired.
 
 ### 3. Present findings and ask
 
@@ -57,6 +59,10 @@ Summarise what is present and what is missing. Then take the sections in order â
 one section, one answer, then the next. Lead each section with the recommended
 answer so the user can accept it in a word, and skip a section outright when
 exploration already settled it.
+
+On a repeat run the recommended answer is whatever the repository already
+carries: propose keeping it, and write a file only where the user asks for a
+change. Running this skill again leaves a hand-tuned configuration as it is.
 
 **Section A â€” Merge automation.**
 
@@ -96,9 +102,9 @@ Otherwise ask one question:
 > Which command releases what a worktree owned, once the worktree is gone?
 
 Write it as an executable `.agents/hooks/cleanup`, using [`cleanup`](./cleanup)
-as the starting point. `/implement` runs it after removing a merged worktree and
-reports its output, so have the command name what it released rather than
-working silently.
+as the starting point with its `RELEASE_COMMAND` placeholder replaced by the
+answer. `/implement` runs it after removing a merged worktree and reports its
+output, so have the command name what it released rather than working silently.
 
 ### 4. Confirm and write
 
@@ -109,6 +115,6 @@ write them, and make `.agents/hooks/cleanup` executable.
 
 Tell the user to commit the generated files so the tooling stays a property of
 the repository, and that Codex needs `/hooks` to trust the project hook once
-while Cursor reloads `.cursor/hooks.json` on save. Re-running this skill is only
-necessary to change how the repository merges or what it releases; updating the
-tooling itself is `npx skills@latest update`.
+while Cursor reloads `.cursor/hooks.json` on save. Updating the tooling itself is
+`npx skills@latest update`; this skill is worth running again to change how the
+repository merges or what it releases, and safe to run again for any reason.
