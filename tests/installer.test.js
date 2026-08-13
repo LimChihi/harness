@@ -51,7 +51,7 @@ test('installs the hooks and project configuration', (t) => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(readFileSync(join(path, fileSizeHookPath), 'utf8'), /MAX_UNPROMPTED_GROWTH = 30/);
   assert.match(readFileSync(join(path, handoffHookPath), 'utf8'), /def lifecycle_hint/);
-  assert.throws(() => readFileSync(join(path, '.agents/skills/imp/SKILL.md')));
+  assert.throws(() => readFileSync(join(path, '.agents/skills/implement/SKILL.md')));
   assert.match(result.stdout, /npx skills@latest add limchihi\/harness/);
 
   const codex = readConfig(path, '.codex/hooks.json');

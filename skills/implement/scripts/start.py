@@ -292,5 +292,5 @@ if __name__ == "__main__":
     try:
         main()
     except (StartError, json.JSONDecodeError, KeyError) as error:
-        print(f"imp start: {error}", file=sys.stderr)
+        print(f"implement start: {error}", file=sys.stderr)
         sys.exit(1)

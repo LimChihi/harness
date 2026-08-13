@@ -1,5 +1,6 @@
 interface:
   display_name: "Implement"
-  short_description: "Build work from a spec or tickets and deliver it"
+  short_description: "Build a ticket or spec and deliver it to merge"
+  default_prompt: "Use /implement to build and deliver the referenced ticket or spec."
 policy:
   allow_implicit_invocation: false

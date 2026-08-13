@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START = ROOT / "skills" / "imp" / "scripts" / "start.py"
+START = ROOT / "skills" / "implement" / "scripts" / "start.py"
 
 
 def run(*arguments, cwd=None, env=None, check=True):
@@ -25,7 +25,7 @@ def run(*arguments, cwd=None, env=None, check=True):
 
 class ImpStartTests(unittest.TestCase):
     def setUp(self):
-        self.temp = Path(tempfile.mkdtemp(prefix="harness-imp-"))
+        self.temp = Path(tempfile.mkdtemp(prefix="harness-start-"))
         self.repo = self.temp / "repo"
         self.remote = self.temp / "remote.git"
         run("git", "init", "--bare", "--initial-branch=trunk", str(self.remote))

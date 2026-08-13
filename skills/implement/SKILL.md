@@ -1,10 +1,31 @@
 ---
 name: implement
-description: "Implement a piece of work based on a spec or set of tickets, and deliver it through review."
+description: "Implement a ticket, a spec, or work described in the conversation, and deliver it through review to merge."
+argument-hint: "A tracker issue, or nothing to build what the conversation described"
 disable-model-invocation: true
 ---
 
-Implement the work described by the user in the spec or tickets.
+Implement the work the user named, then deliver it.
+
+## Start
+
+When the user named a tracker issue, run this skill's `scripts/start.py ISSUE`.
+Its report begins with `TICKET` or `SPEC`; follow that branch. When the user
+described the work instead, build it where you already are and skip to Build.
+
+For `TICKET`, work only in the reported worktree. Inspect any reported dirty
+state before editing. If the branch is behind the default branch, follow the
+repository's synchronization workflow first.
+
+For `SPEC`, create no worktree for the spec itself. Start every `READY` ticket
+that fits the available workers: run the script for that ticket, then have a
+worker carry it from Build in its reported worktree. `BLOCKED` tickets wait.
+After a ticket's pull request merges, rerun the script for the spec to refresh
+the frontier. The spec is complete only when the report says `COMPLETE: yes`.
+When the remaining frontier depends on review, merge, or another external
+action, report that boundary and stop.
+
+## Build
 
 Use /tdd where possible, at pre-agreed seams.
 
@@ -13,9 +34,9 @@ once at the end.
 
 Once done, use /code-review to review the work.
 
-Commit your work to the current branch, then deliver it.
+Commit your work to the current branch.
 
-## Delivery
+## Deliver
 
 Delivery ends when the pull request carries every condition its repository
 merges on. Merging itself belongs to the repository.
@@ -46,3 +67,6 @@ Each `STATUS` the report can carry:
 
 Once the pull request has merged, run `npx @limchihi/harness cleanup` from
 outside the ticket's worktree to remove it and release what it held.
+
+Run `npx @limchihi/harness state` at any point the branch, remote, or
+pull-request relationship needs orientation.

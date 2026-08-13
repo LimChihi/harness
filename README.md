@@ -33,17 +33,16 @@ npx skills@latest add limchihi/harness
 
 `skills` owns `.agents/skills/` and records what it installed in `skills-lock.json`, so the hooks and the skills each have one installer:
 
-- `imp` — start a ticket or spec: claim it, prepare its worktree, report the frontier.
-- `implement` — build the work and deliver it through review to merge.
+- `implement` — claim a ticket or spec, build it in its own worktree, and deliver it through review to merge.
 - `setup-harness` — configure a repository for that delivery loop. Run it once per repository, before the first `/implement`.
 
 ## Implementation entry point
 
-`$imp #123` accepts a GitHub ticket or a spec composed of tickets. It provides an isolated worktree for each selected ticket and delegates the work to the existing `/implement` skill. Independent tickets in a spec can be coordinated in parallel.
+`/implement #123` accepts a GitHub ticket or a spec composed of tickets, and also runs without an issue on work the conversation described. Independent tickets in a spec can be coordinated in parallel.
 
 The bundled start script identifies specs before mutation and reports their ready and blocked tickets. For a leaf ticket, it uses `gh` to claim the issue and Git to create or recover its `task/123` worktree, then reports the worktree, branch state, and existing pull request. Repository-specific worktree initialization remains a property of the target repository.
 
-After implementation, use the repository's normal check command followed by ordinary `git commit`, `git push`, and GitHub pull-request tools. Harness does not wrap those operations.
+Checks, commits, pushes, and pull requests stay with the repository's own command and ordinary Git and GitHub tools. Harness does not wrap those operations.
 
 ## Handoff state
 
