@@ -13,27 +13,29 @@ npx @limchihi/harness install
 The installer writes:
 
 ```text
-.agents/
-├── hooks/
-│   └── harness/
-│       ├── file_size_hint.py
-│       └── handoff.py
-└── skills/
-    ├── imp/
-    │   ├── SKILL.md
-    │   ├── agents/openai.yaml
-    │   └── scripts/start.py
-    └── implement/
-        ├── SKILL.md
-        └── agents/openai.yaml
+.agents/hooks/harness/
+├── file_size_hint.py
+└── handoff.py
 .codex/hooks.json
 .cursor/hooks.json
 ```
 
-Existing hooks in `.codex/hooks.json` and `.cursor/hooks.json` are preserved. Re-running the command updates the harness-owned hooks and skill without adding duplicate configuration, and removes hooks left at their previous `.codex/hooks/` locations.
+Existing hooks in `.codex/hooks.json` and `.cursor/hooks.json` are preserved. Re-running the command updates the harness-owned hooks without adding duplicate configuration, and removes hooks left at their previous `.codex/hooks/` locations.
 Commit the generated `.agents/`, `.codex/`, and `.cursor/` files so the tools remain properties of the repository.
 
 After installation, open `/hooks` in Codex and trust the project hook. Cursor reloads `.cursor/hooks.json` on save.
+
+## Skills
+
+```bash
+npx skills@latest add limchihi/harness
+```
+
+`skills` owns `.agents/skills/` and records what it installed in `skills-lock.json`, so the hooks and the skills each have one installer:
+
+- `imp` — start a ticket or spec: claim it, prepare its worktree, report the frontier.
+- `implement` — build the work and deliver it through review to merge.
+- `setup-harness` — configure a repository for that delivery loop. Run it once per repository, before the first `/implement`.
 
 ## Implementation entry point
 

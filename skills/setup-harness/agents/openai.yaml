@@ -1,0 +1,5 @@
+interface:
+  display_name: "Setup Harness"
+  short_description: "Configure this repo for the delivery loop"
+policy:
+  allow_implicit_invocation: false

@@ -32,23 +32,6 @@ const obsoleteFileSizeHookPaths = [
 const obsoleteHandoffHookPaths = ['.codex/hooks/harness/handoff.py'];
 const obsoleteFileSizeHookCommands = obsoleteFileSizeHookPaths.map(hookCommand);
 const obsoleteHandoffHookCommands = obsoleteHandoffHookPaths.map(hookCommand);
-const skills = [
-  {
-    name: 'imp',
-    files: [
-      { path: 'SKILL.md', mode: 0o644 },
-      { path: 'agents/openai.yaml', mode: 0o644 },
-      { path: 'scripts/start.py', mode: 0o755 },
-    ],
-  },
-  {
-    name: 'implement',
-    files: [
-      { path: 'SKILL.md', mode: 0o644 },
-      { path: 'agents/openai.yaml', mode: 0o644 },
-    ],
-  },
-];
 
 function usage() {
   return `Usage: harness <command> [options]
@@ -248,23 +231,13 @@ async function install(repo) {
   for (const relativePath of [...obsoleteFileSizeHookPaths, ...obsoleteHandoffHookPaths]) {
     await rm(join(root, relativePath), { force: true });
   }
-  for (const skill of skills) {
-    for (const file of skill.files) {
-      const source = join(packageRoot, 'skills', skill.name, file.path);
-      const target = join(root, '.agents/skills', skill.name, file.path);
-      await atomicWrite(target, await readFile(source), file.mode);
-    }
-  }
-
   console.log(`Installed ${packageJson.name}@${packageJson.version} in ${root}`);
   console.log(`  ${fileSizeHookRelativePath}`);
   console.log(`  ${handoffHookRelativePath}`);
   console.log(`  ${codexHooksRelativePath}`);
   console.log(`  ${cursorHooksRelativePath}`);
-  for (const skill of skills) {
-    console.log(`  .agents/skills/${skill.name}/`);
-  }
   console.log('Review and trust the project hook with /hooks in Codex.');
+  console.log('Add the skills with: npx skills@latest add limchihi/harness');
 }
 
 function state(repo) {

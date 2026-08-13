@@ -13,11 +13,6 @@
     "hooks/handoff.py",
     "hooks/delivery.py",
     "hooks/cleanup.py",
-    "skills/imp/SKILL.md",
-    "skills/imp/agents/openai.yaml",
-    "skills/imp/scripts/start.py",
-    "skills/implement/SKILL.md",
-    "skills/implement/agents/openai.yaml",
     "README.md",
     "LICENSE"
   ],

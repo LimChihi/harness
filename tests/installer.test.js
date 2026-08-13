@@ -51,30 +51,8 @@ test('installs the hooks and project configuration', (t) => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(readFileSync(join(path, fileSizeHookPath), 'utf8'), /MAX_UNPROMPTED_GROWTH = 30/);
   assert.match(readFileSync(join(path, handoffHookPath), 'utf8'), /def lifecycle_hint/);
-  assert.match(
-    readFileSync(join(path, '.agents/skills/imp/SKILL.md'), 'utf8'),
-    /run `\/implement`/,
-  );
-  assert.match(
-    readFileSync(join(path, '.agents/skills/imp/SKILL.md'), 'utf8'),
-    /npx @limchihi\/harness state/,
-  );
-  assert.match(
-    readFileSync(join(path, '.agents/skills/imp/scripts/start.py'), 'utf8'),
-    /task\/\{issue\}/,
-  );
-  assert.match(
-    readFileSync(join(path, '.agents/skills/imp/agents/openai.yaml'), 'utf8'),
-    /allow_implicit_invocation: false/,
-  );
-  assert.match(
-    readFileSync(join(path, '.agents/skills/implement/SKILL.md'), 'utf8'),
-    /npx @limchihi\/harness await/,
-  );
-  assert.match(
-    readFileSync(join(path, '.agents/skills/implement/agents/openai.yaml'), 'utf8'),
-    /allow_implicit_invocation: false/,
-  );
+  assert.throws(() => readFileSync(join(path, '.agents/skills/imp/SKILL.md')));
+  assert.match(result.stdout, /npx skills@latest add limchihi\/harness/);
 
   const codex = readConfig(path, '.codex/hooks.json');
   for (const event of ['PreToolUse', 'PostToolUse']) {

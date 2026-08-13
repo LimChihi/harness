@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Runs from the repository root after a merged worktree is removed. Name what it
+# releases on stdout; harness reports the output.
+exec RELEASE_COMMAND

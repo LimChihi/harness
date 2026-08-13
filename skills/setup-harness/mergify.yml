@@ -1,0 +1,10 @@
+pull_request_rules:
+  - name: Merge validated pull requests
+    conditions:
+      - base = DEFAULT_BRANCH
+      - -draft
+      - check-success = REQUIRED_CHECK
+      - "#review-threads-unresolved = 0"
+    actions:
+      merge:
+        method: merge
