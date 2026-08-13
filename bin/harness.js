@@ -8,17 +8,28 @@ import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
+
+function hookCommand(relativePath) {
+  return `/usr/bin/python3 "$(git rev-parse --show-toplevel)/${relativePath}"`;
+}
+
+const codexHooksRelativePath = '.codex/hooks.json';
+const cursorHooksRelativePath = '.cursor/hooks.json';
 const fileSizeHookSource = join(packageRoot, 'hooks/file_size_hint.py');
-const fileSizeHookRelativePath = '.codex/hooks/harness/file_size_hint.py';
-const fileSizeHookCommand =
-  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py"';
-const legacyFileSizeHookRelativePath = '.codex/hooks/file_size_hint.py';
-const legacyFileSizeHookCommand =
-  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/file_size_hint.py"';
+const fileSizeHookRelativePath = '.agents/hooks/harness/file_size_hint.py';
+const fileSizeHookCommand = hookCommand(fileSizeHookRelativePath);
 const handoffHookSource = join(packageRoot, 'hooks/handoff.py');
-const handoffHookRelativePath = '.codex/hooks/harness/handoff.py';
-const handoffHookCommand =
-  '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/harness/handoff.py"';
+const handoffHookRelativePath = '.agents/hooks/harness/handoff.py';
+const handoffHookCommand = hookCommand(handoffHookRelativePath);
+const codexEditMatcher = '^apply_patch$';
+const cursorEditMatcher = '^(Write|Delete)$';
+const obsoleteFileSizeHookPaths = [
+  '.codex/hooks/file_size_hint.py',
+  '.codex/hooks/harness/file_size_hint.py',
+];
+const obsoleteHandoffHookPaths = ['.codex/hooks/harness/handoff.py'];
+const obsoleteFileSizeHookCommands = obsoleteFileSizeHookPaths.map(hookCommand);
+const obsoleteHandoffHookCommands = obsoleteHandoffHookPaths.map(hookCommand);
 const skillFiles = [
   { path: 'SKILL.md', mode: 0o644 },
   { path: 'agents/openai.yaml', mode: 0o644 },
@@ -72,16 +83,13 @@ function parseRepositoryArguments(args) {
   return { repo };
 }
 
-async function readHooksConfig(path) {
+async function readHooksConfig(path, defaults) {
   let source;
   try {
     source = await readFile(path, 'utf8');
   } catch (error) {
     if (error.code === 'ENOENT') {
-      return {
-        description: 'Project-local Codex hooks.',
-        hooks: {},
-      };
+      return { ...defaults, hooks: {} };
     }
     throw error;
   }
@@ -99,14 +107,13 @@ async function readHooksConfig(path) {
   return config;
 }
 
-function installEvent(config, event, command, timeout, matcher, obsoleteCommands = []) {
+function installCodexEvent(config, event, command, timeout, matcher, obsoleteCommands) {
   const groups = config.hooks[event] ?? [];
   if (!Array.isArray(groups)) {
     throw new Error(`hooks.${event} must be an array`);
   }
 
   const retainedGroups = [];
-  let removedObsoleteCommand = false;
   for (const group of groups) {
     if (group === null || Array.isArray(group) || typeof group !== 'object') {
       throw new Error(`hooks.${event} entries must be objects`);
@@ -119,16 +126,9 @@ function installEvent(config, event, command, timeout, matcher, obsoleteCommands
         throw new Error(`hooks.${event} handlers must be objects`);
       }
     }
-    const handlers = group.hooks.filter((handler) => {
-      if (handler.command === command) {
-        return false;
-      }
-      if (obsoleteCommands.includes(handler.command)) {
-        removedObsoleteCommand = true;
-        return false;
-      }
-      return true;
-    });
+    const handlers = group.hooks.filter(
+      (handler) => handler.command !== command && !obsoleteCommands.includes(handler.command),
+    );
     if (handlers.length > 0) {
       retainedGroups.push({ ...group, hooks: handlers });
     }
@@ -148,7 +148,22 @@ function installEvent(config, event, command, timeout, matcher, obsoleteCommands
   }
   retainedGroups.push(group);
   config.hooks[event] = retainedGroups;
-  return removedObsoleteCommand;
+}
+
+function installCursorEvent(config, event, handler, obsoleteCommands) {
+  const handlers = config.hooks[event] ?? [];
+  if (!Array.isArray(handlers)) {
+    throw new Error(`hooks.${event} must be an array`);
+  }
+
+  const retained = handlers.filter((entry) => {
+    if (entry === null || Array.isArray(entry) || typeof entry !== 'object') {
+      throw new Error(`hooks.${event} entries must be objects`);
+    }
+    return entry.command !== handler.command && !obsoleteCommands.includes(entry.command);
+  });
+  retained.push(handler);
+  config.hooks[event] = retained;
 }
 
 async function atomicWrite(path, contents, mode) {
@@ -160,22 +175,46 @@ async function atomicWrite(path, contents, mode) {
 
 async function install(repo) {
   const root = repositoryRoot(repo);
-  const hooksPath = join(root, '.codex/hooks.json');
-  const config = await readHooksConfig(hooksPath);
 
-  let removeLegacyFileSizeHook = false;
+  const codexHooksPath = join(root, codexHooksRelativePath);
+  const codexConfig = await readHooksConfig(codexHooksPath, {
+    description: 'Project-local Codex hooks.',
+  });
   for (const event of ['PreToolUse', 'PostToolUse']) {
-    removeLegacyFileSizeHook =
-      installEvent(
-        config,
-        event,
-        fileSizeHookCommand,
-        5,
-        '^apply_patch$',
-        [legacyFileSizeHookCommand],
-      ) || removeLegacyFileSizeHook;
+    installCodexEvent(
+      codexConfig,
+      event,
+      fileSizeHookCommand,
+      5,
+      codexEditMatcher,
+      obsoleteFileSizeHookCommands,
+    );
   }
-  installEvent(config, 'Stop', handoffHookCommand, 30);
+  installCodexEvent(
+    codexConfig,
+    'Stop',
+    handoffHookCommand,
+    30,
+    undefined,
+    obsoleteHandoffHookCommands,
+  );
+
+  const cursorHooksPath = join(root, cursorHooksRelativePath);
+  const cursorConfig = await readHooksConfig(cursorHooksPath, { version: 1 });
+  for (const event of ['preToolUse', 'postToolUse']) {
+    installCursorEvent(
+      cursorConfig,
+      event,
+      { command: fileSizeHookCommand, matcher: cursorEditMatcher, timeout: 5 },
+      obsoleteFileSizeHookCommands,
+    );
+  }
+  installCursorEvent(
+    cursorConfig,
+    'stop',
+    { command: handoffHookCommand, timeout: 30, loop_limit: null },
+    obsoleteHandoffHookCommands,
+  );
 
   await atomicWrite(
     join(root, fileSizeHookRelativePath),
@@ -187,9 +226,10 @@ async function install(repo) {
     await readFile(handoffHookSource),
     0o644,
   );
-  await atomicWrite(hooksPath, `${JSON.stringify(config, null, 2)}\n`, 0o644);
-  if (removeLegacyFileSizeHook) {
-    await rm(join(root, legacyFileSizeHookRelativePath), { force: true });
+  await atomicWrite(codexHooksPath, `${JSON.stringify(codexConfig, null, 2)}\n`, 0o644);
+  await atomicWrite(cursorHooksPath, `${JSON.stringify(cursorConfig, null, 2)}\n`, 0o644);
+  for (const relativePath of [...obsoleteFileSizeHookPaths, ...obsoleteHandoffHookPaths]) {
+    await rm(join(root, relativePath), { force: true });
   }
   for (const file of skillFiles) {
     const source = join(packageRoot, 'skills/imp', file.path);
@@ -200,7 +240,8 @@ async function install(repo) {
   console.log(`Installed ${packageJson.name}@${packageJson.version} in ${root}`);
   console.log(`  ${fileSizeHookRelativePath}`);
   console.log(`  ${handoffHookRelativePath}`);
-  console.log('  .codex/hooks.json');
+  console.log(`  ${codexHooksRelativePath}`);
+  console.log(`  ${cursorHooksRelativePath}`);
   console.log('  .agents/skills/imp/');
   console.log('Review and trust the project hook with /hooks in Codex.');
 }

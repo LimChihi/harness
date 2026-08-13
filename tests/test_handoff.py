@@ -84,15 +84,27 @@ else:
         run("git", "add", "ticket.txt", cwd=self.repo)
         run("git", "commit", "-m", "Ticket", cwd=self.repo)
 
-    def hook(self):
+    def hook(self, payload=None):
         return run(
             "python3",
             str(HOOK),
             cwd=self.repo,
             env=self.env,
             check=False,
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.repo)}),
+            input=json.dumps(
+                payload
+                if payload is not None
+                else {"hook_event_name": "Stop", "cwd": str(self.repo)}
+            ),
         )
+
+    def cursor_payload(self, status="completed"):
+        return {
+            "hook_event_name": "stop",
+            "status": status,
+            "loop_count": 0,
+            "workspace_roots": [str(self.repo)],
+        }
 
     def set_pull_request(self, pr_state="OPEN", base="trunk"):
         state = json.loads(self.state.read_text(encoding="utf-8"))
@@ -200,6 +212,33 @@ else:
         )
         self.assertIn("local task/2 and origin/task/2 have diverged", result.stdout)
         self.assertIn("reconcile them explicitly", result.stdout)
+
+    def test_cursor_stop_returns_a_followup_message_from_workspace_roots(self):
+        self.create_task_commit()
+        run("git", "push", "-u", "origin", "task/2", cwd=self.repo)
+        self.set_pull_request()
+
+        result = self.hook(self.cursor_payload())
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "followup_message": (
+                    "PR #9 is open: inspect its reviews, checks, and mergeability "
+                    "every 4 minutes; fix and resolve review feedback, CI failures, "
+                    "and conflicts until the PR merges."
+                )
+            },
+        )
+
+    def test_cursor_stop_is_silent_when_the_turn_did_not_complete(self):
+        self.create_task_commit()
+
+        result = self.hook(self.cursor_payload(status="aborted"))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
 
     def test_stop_requires_pull_request_to_target_default_branch(self):
         self.create_task_commit()

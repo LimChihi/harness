@@ -58,11 +58,38 @@ class FileSizeHintTests(unittest.TestCase):
             )
         return payload
 
+    def cursor_payload(self, tool_input, event=None, tool_name="Write"):
+        payload = {
+            "workspace_roots": [str(self.directory)],
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+        }
+        if event is not None:
+            payload.update(
+                {
+                    "conversation_id": "cursor-session",
+                    "session_id": "cursor-session",
+                    "tool_use_id": f"cursor-{self.directory.name}",
+                    "hook_event_name": event,
+                }
+            )
+        return payload
+
     def hints_after(self, command, mutate):
         payload = self.payload(command)
         before_counts = file_size_hint.capture_line_counts(payload)
         mutate()
         return file_size_hint.collect_hints(payload, before_counts)
+
+    @staticmethod
+    def run_hook(payload):
+        return subprocess.run(
+            [sys.executable, MODULE_PATH],
+            input=json.dumps(payload),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
 
     def test_extracts_source_and_destination_paths(self):
         command = """*** Begin Patch
@@ -137,19 +164,62 @@ class FileSizeHintTests(unittest.TestCase):
             text=True,
         )
 
+        hint = (
+            "large.py: 801 lines (>800). Check responsibility before adding more code."
+        )
         self.assertEqual(pre.stdout, "")
         self.assertEqual(
             json.loads(post.stdout),
             {
                 "hookSpecificOutput": {
                     "hookEventName": "PostToolUse",
-                    "additionalContext": (
-                        "large.py: 801 lines (>800). "
-                        "Check responsibility before adding more code."
-                    ),
-                }
+                    "additionalContext": hint,
+                },
+                "additional_context": hint,
             },
         )
+
+    def test_cursor_payload_resolves_the_repository_from_workspace_roots(self):
+        path = self.directory / "large.py"
+        path.write_text("line\n" * 770, encoding="utf-8")
+        tool_input = {"file_path": str(path), "content": "line\n" * 801}
+
+        pre = self.run_hook(self.cursor_payload(tool_input, "preToolUse"))
+        path.write_text("line\n" * 801, encoding="utf-8")
+        post = self.run_hook(self.cursor_payload(tool_input, "postToolUse"))
+
+        self.assertEqual(pre.stdout, "")
+        self.assertEqual(
+            json.loads(post.stdout)["additional_context"],
+            "large.py: 801 lines (>800). Check responsibility before adding more code.",
+        )
+
+    def test_cursor_delete_reports_no_growth(self):
+        path = self.directory / "large.py"
+        path.write_text("line\n" * 900, encoding="utf-8")
+        payload = self.cursor_payload({"path": str(path)}, tool_name="Delete")
+        counts = file_size_hint.capture_line_counts(payload)
+        path.unlink()
+
+        self.assertEqual(file_size_hint.collect_hints(payload, counts), [])
+
+    def test_normalizes_event_names_from_both_agents(self):
+        self.assertEqual(file_size_hint.normalize_event("PreToolUse"), "PreToolUse")
+        self.assertEqual(file_size_hint.normalize_event("preToolUse"), "PreToolUse")
+        self.assertEqual(file_size_hint.normalize_event("postToolUse"), "PostToolUse")
+        with self.assertRaises(ValueError):
+            file_size_hint.normalize_event("Stop")
+
+    def test_working_directory_requires_cwd_or_workspace_roots(self):
+        self.assertEqual(
+            file_size_hint.hook_cwd({"cwd": str(self.directory)}), self.directory.resolve()
+        )
+        self.assertEqual(
+            file_size_hint.hook_cwd({"workspace_roots": [str(self.directory)]}),
+            self.directory.resolve(),
+        )
+        with self.assertRaises(ValueError):
+            file_size_hint.hook_cwd({"workspace_roots": []})
 
     def test_new_file_growth_starts_at_zero(self):
         path = self.directory / "new.py"

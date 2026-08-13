@@ -14,6 +14,13 @@ MOVE_MARKER = re.compile(r"^\*\*\* Move to: (.+)$")
 IGNORED_FILE_SUFFIXES = frozenset({".lock"})
 MAX_UNPROMPTED_GROWTH = 30
 SNAPSHOT_VERSION = 1
+EVENT_NAMES = {
+    "PreToolUse": "PreToolUse",
+    "preToolUse": "PreToolUse",
+    "PostToolUse": "PostToolUse",
+    "postToolUse": "PostToolUse",
+}
+DELETE_TOOLS = frozenset({"Delete"})
 
 
 def edited_files(command):
@@ -46,10 +53,56 @@ def edited_files(command):
     return files
 
 
+def normalize_event(name):
+    try:
+        return EVENT_NAMES[name]
+    except KeyError as error:
+        raise ValueError(f"unsupported hook event: {name}") from error
+
+
+def hook_cwd(payload):
+    cwd = payload.get("cwd")
+    if cwd:
+        return Path(cwd).resolve()
+    roots = payload.get("workspace_roots") or []
+    if roots:
+        return Path(roots[0]).resolve()
+    raise ValueError("missing cwd/workspace_roots")
+
+
+def session_id(payload):
+    value = payload.get("session_id") or payload.get("conversation_id")
+    if not value:
+        raise ValueError("missing session_id/conversation_id")
+    return value
+
+
+def patch_command(payload):
+    command = payload["tool_input"].get("command")
+    if isinstance(command, str) and (
+        command.lstrip().startswith("***") or "\n*** " in command
+    ):
+        return command
+    return None
+
+
+def tool_edits(payload):
+    command = patch_command(payload)
+    if command is not None:
+        return edited_files(command)
+
+    tool_input = payload["tool_input"]
+    path = tool_input.get("path") or tool_input.get("file_path")
+    if path is None:
+        raise ValueError("missing tool path")
+    if payload.get("tool_name") in DELETE_TOOLS:
+        return [(path, None)]
+    return [(path, path)]
+
+
 def repository_root(payload):
-    cwd = Path(payload["cwd"]).resolve()
     result = subprocess.run(
-        ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+        ["git", "-C", str(hook_cwd(payload)), "rev-parse", "--show-toplevel"],
         check=False,
         capture_output=True,
         text=True,
@@ -84,9 +137,9 @@ def is_ignored_file(path):
 
 def capture_line_counts(payload):
     root = repository_root(payload)
-    cwd = Path(payload["cwd"]).resolve()
+    cwd = hook_cwd(payload)
     counts = {}
-    for source, target in edited_files(payload["tool_input"]["command"]):
+    for source, target in tool_edits(payload):
         if target is None or is_ignored_file(target):
             continue
         for edited_path in (source, target):
@@ -120,11 +173,11 @@ def hint_for(path, line_count):
 
 def collect_hints(payload, before_counts):
     root = repository_root(payload)
-    cwd = Path(payload["cwd"]).resolve()
+    cwd = hook_cwd(payload)
     hints = []
     visited = set()
 
-    for source, target in edited_files(payload["tool_input"]["command"]):
+    for source, target in tool_edits(payload):
         if target is None or is_ignored_file(target):
             continue
         path = repository_path(root, cwd, target)
@@ -164,22 +217,28 @@ def snapshot_path(payload):
     )
     if result.returncode != 0:
         raise RuntimeError(f"failed to resolve Git common dir: {result.stderr.strip()}")
-    identity = f"{payload['session_id']}\0{payload['tool_use_id']}".encode()
+    identity = f"{session_id(payload)}\0{payload['tool_use_id']}".encode()
     name = hashlib.sha256(identity).hexdigest()
     return Path(result.stdout.strip()) / "harness/hooks/file-size-hint" / f"{name}.json"
 
 
-def command_digest(payload):
-    command = payload["tool_input"]["command"].encode()
-    return hashlib.sha256(command).hexdigest()
+def edit_digest(payload):
+    command = patch_command(payload)
+    if command is not None:
+        raw = command.encode()
+    else:
+        raw = json.dumps(
+            payload["tool_input"], sort_keys=True, separators=(",", ":")
+        ).encode()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def write_snapshot(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     value = {
         "version": SNAPSHOT_VERSION,
-        "cwd": str(Path(payload["cwd"]).resolve()),
-        "command": command_digest(payload),
+        "cwd": str(hook_cwd(payload)),
+        "command": edit_digest(payload),
         "line_counts": capture_line_counts(payload),
     }
     descriptor, temporary_name = tempfile.mkstemp(
@@ -200,8 +259,8 @@ def read_snapshot(path, payload):
     value = json.loads(path.read_text(encoding="utf-8"))
     if (
         value.get("version") != SNAPSHOT_VERSION
-        or value.get("cwd") != str(Path(payload["cwd"]).resolve())
-        or value.get("command") != command_digest(payload)
+        or value.get("cwd") != str(hook_cwd(payload))
+        or value.get("command") != edit_digest(payload)
         or not isinstance(value.get("line_counts"), dict)
     ):
         raise ValueError(f"invalid file-size snapshot: {path}")
@@ -211,23 +270,23 @@ def read_snapshot(path, payload):
 def post_tool_output(hints):
     if not hints:
         return None
+    context = "\n".join(hints)
     return {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "additionalContext": "\n".join(hints),
-        }
+            "additionalContext": context,
+        },
+        "additional_context": context,
     }
 
 
 def main():
     payload = json.load(sys.stdin)
     path = snapshot_path(payload)
-    event = payload["hook_event_name"]
+    event = normalize_event(payload["hook_event_name"])
     if event == "PreToolUse":
         write_snapshot(path, payload)
         return
-    if event != "PostToolUse":
-        raise ValueError(f"unsupported hook event: {event}")
 
     before_counts = read_snapshot(path, payload)
     try:

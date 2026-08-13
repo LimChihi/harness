@@ -3,24 +3,35 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "^apply_patch$",
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py\"",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/harness/file_size_hint.py\"",
             "timeout": 5
           }
-        ]
+        ],
+        "matcher": "^apply_patch$"
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "^apply_patch$",
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/harness/file_size_hint.py\"",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/harness/file_size_hint.py\"",
             "timeout": 5
+          }
+        ],
+        "matcher": "^apply_patch$"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/harness/handoff.py\"",
+            "timeout": 30
           }
         ]
       }

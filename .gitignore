@@ -1,3 +1,4 @@
 node_modules/
 __pycache__/
 *.tgz
+.agents/skills/

@@ -1,6 +1,6 @@
 # harness
 
-Project-local development tools for coding agents.
+Project-local development tools for coding agents. Codex and Cursor share one copy of each hook.
 
 ## Install
 
@@ -13,24 +13,24 @@ npx @limchihi/harness install
 The installer writes:
 
 ```text
-.codex/
-├── hooks.json
-└── hooks/
-    └── harness/
-        ├── file_size_hint.py
-        └── handoff.py
 .agents/
+├── hooks/
+│   └── harness/
+│       ├── file_size_hint.py
+│       └── handoff.py
 └── skills/
     └── imp/
         ├── SKILL.md
         ├── agents/openai.yaml
         └── scripts/start.py
+.codex/hooks.json
+.cursor/hooks.json
 ```
 
-Existing hooks in `.codex/hooks.json` are preserved. Re-running the command updates the harness-owned hook and skill without adding duplicate configuration.
-Commit the generated `.codex/` and `.agents/` files so the tools remain properties of the repository.
+Existing hooks in `.codex/hooks.json` and `.cursor/hooks.json` are preserved. Re-running the command updates the harness-owned hooks and skill without adding duplicate configuration, and removes hooks left at their previous `.codex/hooks/` locations.
+Commit the generated `.agents/`, `.codex/`, and `.cursor/` files so the tools remain properties of the repository.
 
-After installation, open `/hooks` in Codex and trust the project hook.
+After installation, open `/hooks` in Codex and trust the project hook. Cursor reloads `.cursor/hooks.json` on save.
 
 ## Implementation entry point
 
@@ -48,11 +48,11 @@ Inspect the current worktree, default-branch relationship, remote publication, a
 npx @limchihi/harness state
 ```
 
-The installed `Stop` hook consumes the same state. It asks the agent to continue when committing, pushing, or opening a pull request is the single clear missing step. While a pull request is open, it keeps the agent monitoring reviews, checks, and mergeability every four minutes so feedback, CI failures, and conflicts are resolved before merge.
+The installed stop hook consumes the same state. It asks the agent to continue when committing, pushing, or opening a pull request is the single clear missing step. While a pull request is open, it keeps the agent monitoring reviews, checks, and mergeability every four minutes so feedback, CI failures, and conflicts are resolved before merge. Codex receives the guidance as a blocking `Stop` decision and Cursor as a `followup_message`.
 
 ## File size hints
 
-The hook observes `apply_patch` edits. It emits context when a file grows by more than 30 lines and ends above one of these thresholds:
+The hook observes Codex `apply_patch` edits and Cursor `Write` and `Delete` edits. It emits context when a file grows by more than 30 lines and ends above one of these thresholds:
 
 - More than 800 lines: check whether the file still has one responsibility.
 - More than 1,200 lines: extract a coherent responsibility.

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/harness/file_size_hint.py\"",
+        "matcher": "^(Write|Delete)$",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/harness/file_size_hint.py\"",
+        "matcher": "^(Write|Delete)$",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/harness/handoff.py\"",
+        "timeout": 30,
+        "loop_limit": null
+      }
+    ]
+  }
+}
