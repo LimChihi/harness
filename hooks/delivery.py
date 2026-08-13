@@ -13,6 +13,8 @@ POLL_SECONDS = 30
 TIMEOUT_SECONDS = 25 * 60
 LOG_TAIL_LINES = 60
 TOLERATED_POLL_FAILURES = 3
+NETWORK_ATTEMPTS = 3
+NETWORK_RETRY_SECONDS = 2
 FAILED_CONCLUSIONS = frozenset(
     {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 )
@@ -60,6 +62,17 @@ def run(arguments, cwd=None, allowed=(0,)):
     return result
 
 
+def over_network(call):
+    """The poll loop absorbs its own failures; the calls before it cannot."""
+    for attempt in range(1, NETWORK_ATTEMPTS + 1):
+        try:
+            return call()
+        except DeliveryError:
+            if attempt == NETWORK_ATTEMPTS:
+                raise
+            time.sleep(NETWORK_RETRY_SECONDS)
+
+
 def repository_root(start):
     return Path(
         run(["git", "-C", str(Path(start).resolve()), "rev-parse", "--show-toplevel"])
@@ -79,29 +92,33 @@ def branch_name(root):
 
 def repository_name(root):
     return json.loads(
-        run(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root).stdout
+        over_network(
+            lambda: run(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root)
+        ).stdout
     )["nameWithOwner"]
 
 
 def pull_request(root, repository, branch):
     values = json.loads(
-        run(
-            [
-                "gh",
-                "pr",
-                "list",
-                "--repo",
-                repository,
-                "--head",
-                branch,
-                "--state",
-                "all",
-                "--limit",
-                "1",
-                "--json",
-                "number",
-            ],
-            cwd=root,
+        over_network(
+            lambda: run(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--repo",
+                    repository,
+                    "--head",
+                    branch,
+                    "--state",
+                    "all",
+                    "--limit",
+                    "1",
+                    "--json",
+                    "number",
+                ],
+                cwd=root,
+            )
         ).stdout
     )
     return values[0]["number"] if values else None

@@ -4,11 +4,27 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+
+NETWORK_ATTEMPTS = 3
+NETWORK_RETRY_SECONDS = 2
 
 
 class HandoffError(Exception):
     pass
+
+
+def over_network(call):
+    """GitHub drops connections; a local Git failure is a fact, not a blip."""
+    for attempt in range(1, NETWORK_ATTEMPTS + 1):
+        try:
+            return call()
+        except HandoffError:
+            if attempt == NETWORK_ATTEMPTS:
+                raise
+            time.sleep(NETWORK_RETRY_SECONDS)
 
 
 def run(arguments, cwd=None, allowed=(0,)):
@@ -29,7 +45,7 @@ def git(root, *arguments, allowed=(0,)):
 
 
 def gh(root, *arguments):
-    return run(["gh", *arguments], root).stdout.strip()
+    return over_network(lambda: run(["gh", *arguments], root)).stdout.strip()
 
 
 def repository_root(start):
@@ -46,14 +62,16 @@ def branch_name(root):
 
 
 def remote_commit(root, branch):
-    result = git(
-        root,
-        "ls-remote",
-        "--exit-code",
-        "--heads",
-        "origin",
-        f"refs/heads/{branch}",
-        allowed=(0, 2),
+    result = over_network(
+        lambda: git(
+            root,
+            "ls-remote",
+            "--exit-code",
+            "--heads",
+            "origin",
+            f"refs/heads/{branch}",
+            allowed=(0, 2),
+        )
     )
     if result.returncode == 2:
         return None

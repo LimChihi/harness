@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import shutil
@@ -10,6 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "hooks" / "cleanup.py"
+SPEC = importlib.util.spec_from_file_location("cleanup", MODULE)
+cleanup_module = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(cleanup_module)
 
 FAKE_GH = """#!/usr/bin/env python3
 import json
@@ -35,6 +39,26 @@ def run(*arguments, cwd=None, env=None, check=True):
     return subprocess.run(
         arguments, cwd=cwd, env=env, check=check, capture_output=True, text=True
     )
+
+
+class NetworkRetryTests(unittest.TestCase):
+    def setUp(self):
+        self.delay = cleanup_module.NETWORK_RETRY_SECONDS
+        cleanup_module.NETWORK_RETRY_SECONDS = 0
+
+    def tearDown(self):
+        cleanup_module.NETWORK_RETRY_SECONDS = self.delay
+
+    def test_gives_up_at_the_attempt_limit(self):
+        attempts = []
+
+        def call():
+            attempts.append(1)
+            raise cleanup_module.CleanupError("Connection closed by 20.205.243.166")
+
+        with self.assertRaises(cleanup_module.CleanupError):
+            cleanup_module.over_network(call)
+        self.assertEqual(len(attempts), cleanup_module.NETWORK_ATTEMPTS)
 
 
 class CleanupTests(unittest.TestCase):

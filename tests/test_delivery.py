@@ -104,6 +104,26 @@ class CheckSelectionTests(unittest.TestCase):
         self.assertEqual(delivery.failed_checks(checks), [])
 
 
+class NetworkRetryTests(unittest.TestCase):
+    def setUp(self):
+        self.delay = delivery.NETWORK_RETRY_SECONDS
+        delivery.NETWORK_RETRY_SECONDS = 0
+
+    def tearDown(self):
+        delivery.NETWORK_RETRY_SECONDS = self.delay
+
+    def test_gives_up_at_the_attempt_limit(self):
+        attempts = []
+
+        def call():
+            attempts.append(1)
+            raise delivery.DeliveryError("Connection closed by 20.205.243.166")
+
+        with self.assertRaises(delivery.DeliveryError):
+            delivery.over_network(call)
+        self.assertEqual(len(attempts), delivery.NETWORK_ATTEMPTS)
+
+
 class ObservationTests(unittest.TestCase):
     def observe(self, state, mergeable="MERGEABLE", checks=(), threads=()):
         facts = {

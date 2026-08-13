@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import shutil
@@ -11,6 +12,41 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "bin" / "harness.js"
 HOOK = ROOT / "hooks" / "handoff.py"
+SPEC = importlib.util.spec_from_file_location("handoff", HOOK)
+handoff = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(handoff)
+
+
+class NetworkRetryTests(unittest.TestCase):
+    def setUp(self):
+        self.delay = handoff.NETWORK_RETRY_SECONDS
+        handoff.NETWORK_RETRY_SECONDS = 0
+
+    def tearDown(self):
+        handoff.NETWORK_RETRY_SECONDS = self.delay
+
+    def test_recovers_from_a_dropped_connection(self):
+        attempts = []
+
+        def call():
+            attempts.append(1)
+            if len(attempts) < handoff.NETWORK_ATTEMPTS:
+                raise handoff.HandoffError("Connection closed by 20.205.243.166")
+            return "recovered"
+
+        self.assertEqual(handoff.over_network(call), "recovered")
+        self.assertEqual(len(attempts), handoff.NETWORK_ATTEMPTS)
+
+    def test_gives_up_at_the_attempt_limit(self):
+        attempts = []
+
+        def call():
+            attempts.append(1)
+            raise handoff.HandoffError("Connection closed by 20.205.243.166")
+
+        with self.assertRaises(handoff.HandoffError):
+            handoff.over_network(call)
+        self.assertEqual(len(attempts), handoff.NETWORK_ATTEMPTS)
 
 
 def run(*arguments, cwd=None, env=None, check=True, input=None):
@@ -55,6 +91,12 @@ from pathlib import Path
 path = Path(os.environ["FAKE_GH_STATE"])
 state = json.loads(path.read_text())
 args = sys.argv[1:]
+
+if state.get("fail", 0) > 0:
+    state["fail"] -= 1
+    path.write_text(json.dumps(state))
+    print("Connection closed by 20.205.243.166 port 22", file=sys.stderr)
+    sys.exit(1)
 
 if args[:2] == ["repo", "view"]:
     print(json.dumps({
@@ -119,6 +161,29 @@ else:
             }
         ]
         self.state.write_text(json.dumps(state), encoding="utf-8")
+
+    def set_failures(self, count):
+        state = json.loads(self.state.read_text(encoding="utf-8"))
+        state["fail"] = count
+        self.state.write_text(json.dumps(state), encoding="utf-8")
+
+    def test_stop_survives_a_dropped_github_connection(self):
+        self.create_task_commit()
+        self.set_failures(2)
+
+        result = self.hook()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("git push -u origin task/2", result.stdout)
+
+    def test_stop_reports_a_standing_github_failure(self):
+        self.create_task_commit()
+        self.set_failures(99)
+
+        result = self.hook()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Connection closed", result.stderr)
 
     def test_state_command_reports_git_and_github_facts(self):
         self.create_task_commit()

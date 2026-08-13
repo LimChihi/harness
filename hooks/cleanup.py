@@ -4,14 +4,28 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
 REPOSITORY_HOOK = ".agents/hooks/cleanup"
+NETWORK_ATTEMPTS = 3
+NETWORK_RETRY_SECONDS = 2
 
 
 class CleanupError(Exception):
     pass
+
+
+def over_network(call):
+    """A sweep spans many worktrees; one dropped connection should not end it."""
+    for attempt in range(1, NETWORK_ATTEMPTS + 1):
+        try:
+            return call()
+        except CleanupError:
+            if attempt == NETWORK_ATTEMPTS:
+                raise
+            time.sleep(NETWORK_RETRY_SECONDS)
 
 
 def run(arguments, cwd=None, allowed=(0,)):
@@ -65,18 +79,22 @@ def worktrees(root):
 
 def repository_name(root):
     return json.loads(
-        run(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root).stdout
+        over_network(
+            lambda: run(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root)
+        ).stdout
     )["nameWithOwner"]
 
 
 def merged_pull_request(root, repository, branch):
     values = json.loads(
-        run(
-            [
-                "gh", "pr", "list", "--repo", repository, "--head", branch,
-                "--state", "all", "--limit", "1", "--json", "number,state",
-            ],
-            cwd=root,
+        over_network(
+            lambda: run(
+                [
+                    "gh", "pr", "list", "--repo", repository, "--head", branch,
+                    "--state", "all", "--limit", "1", "--json", "number,state",
+                ],
+                cwd=root,
+            )
         ).stdout
     )
     if not values or values[0]["state"].upper() != "MERGED":
