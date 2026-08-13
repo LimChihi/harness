@@ -19,10 +19,13 @@ The installer writes:
 │       ├── file_size_hint.py
 │       └── handoff.py
 └── skills/
-    └── imp/
+    ├── imp/
+    │   ├── SKILL.md
+    │   ├── agents/openai.yaml
+    │   └── scripts/start.py
+    └── implement/
         ├── SKILL.md
-        ├── agents/openai.yaml
-        └── scripts/start.py
+        └── agents/openai.yaml
 .codex/hooks.json
 .cursor/hooks.json
 ```
@@ -48,7 +51,23 @@ Inspect the current worktree, default-branch relationship, remote publication, a
 npx @limchihi/harness state
 ```
 
-The installed stop hook consumes the same state. It asks the agent to continue when committing, pushing, or opening a pull request is the single clear missing step. While a pull request is open, it keeps the agent monitoring reviews, checks, and mergeability every four minutes so feedback, CI failures, and conflicts are resolved before merge. Codex receives the guidance as a blocking `Stop` decision and Cursor as a `followup_message`.
+The installed stop hook consumes the same state. It asks the agent to continue when committing, pushing, or opening a pull request is the single clear missing step, and falls silent once the pull request exists — an open pull request belongs to the delivery loop below, not to a per-turn reminder. Codex receives the guidance as a blocking `Stop` decision and Cursor as a `followup_message`.
+
+## Delivery
+
+```bash
+npx @limchihi/harness await
+```
+
+An agent has no way to wait: every poll costs it a turn. `await` polls the current branch's pull request on its behalf and returns only when the pull request needs its author, reporting `CHECK_FAILURE` with the tail of the failing log, `UNRESOLVED_THREAD` for each open review thread, `CONFLICT`, `READY`, `MERGED`, or `CLOSED`. A thread the author already replied to but left open is marked `answered-not-resolved`, which is the state that silently blocks a merge. It waits through pending checks, and returns `TIMEOUT` rather than blocking past its window.
+
+`await` reports; it does not prescribe. Committing, pushing, and opening the pull request stay with ordinary Git and GitHub commands, which the agent already knows.
+
+```bash
+npx @limchihi/harness cleanup
+```
+
+Removes every worktree whose pull request merged, together with its branch, and keeps any that carry uncommitted changes or hold the current directory. When a repository owns resources beyond the worktree itself, it puts an executable at `.agents/hooks/cleanup`; `cleanup` runs it after a removal and reports its output. Repositories without that file need no configuration.
 
 ## File size hints
 

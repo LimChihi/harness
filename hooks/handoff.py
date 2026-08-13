@@ -202,11 +202,7 @@ def lifecycle_hint(state):
             f"Handoff incomplete: PR #{pull['number']} targets {pull['baseRefName']}; "
             f"open the delivery pull request against {state['default']}."
         )
-    return (
-        f"PR #{pull['number']} is open: inspect its reviews, checks, and mergeability "
-        "every 4 minutes; fix and resolve review feedback, CI failures, and conflicts "
-        "until the PR merges."
-    )
+    return None
 
 
 def hook_cwd(payload):

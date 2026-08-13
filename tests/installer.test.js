@@ -67,6 +67,14 @@ test('installs the hooks and project configuration', (t) => {
     readFileSync(join(path, '.agents/skills/imp/agents/openai.yaml'), 'utf8'),
     /allow_implicit_invocation: false/,
   );
+  assert.match(
+    readFileSync(join(path, '.agents/skills/implement/SKILL.md'), 'utf8'),
+    /npx @limchihi\/harness await/,
+  );
+  assert.match(
+    readFileSync(join(path, '.agents/skills/implement/agents/openai.yaml'), 'utf8'),
+    /allow_implicit_invocation: false/,
+  );
 
   const codex = readConfig(path, '.codex/hooks.json');
   for (const event of ['PreToolUse', 'PostToolUse']) {

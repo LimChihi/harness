@@ -142,7 +142,7 @@ else:
         self.assertIn("REMOTE: unpublished\n", result.stdout)
         self.assertTrue(result.stdout.endswith("PR: none\n"))
 
-    def test_stop_guides_commit_push_pull_request_and_review_monitoring(self):
+    def test_stop_guides_commit_push_and_pull_request(self):
         run("git", "switch", "-c", "task/2", cwd=self.repo)
         (self.repo / "ticket.txt").write_text("ticket\n", encoding="utf-8")
 
@@ -166,19 +166,9 @@ else:
         self.assertIn("gh pr create --base trunk --head task/2", published.stdout)
 
         self.set_pull_request()
-        monitoring = self.hook()
-        self.assertEqual(monitoring.returncode, 0, monitoring.stderr)
-        self.assertEqual(
-            json.loads(monitoring.stdout),
-            {
-                "decision": "block",
-                "reason": (
-                    "PR #9 is open: inspect its reviews, checks, and mergeability "
-                    "every 4 minutes; fix and resolve review feedback, CI failures, "
-                    "and conflicts until the PR merges."
-                ),
-            },
-        )
+        opened = self.hook()
+        self.assertEqual(opened.returncode, 0, opened.stderr)
+        self.assertEqual(opened.stdout, "")
 
     def test_stop_is_silent_on_the_default_branch(self):
         result = self.hook()
@@ -216,7 +206,6 @@ else:
     def test_cursor_stop_returns_a_followup_message_from_workspace_roots(self):
         self.create_task_commit()
         run("git", "push", "-u", "origin", "task/2", cwd=self.repo)
-        self.set_pull_request()
 
         result = self.hook(self.cursor_payload())
 
@@ -225,12 +214,21 @@ else:
             json.loads(result.stdout),
             {
                 "followup_message": (
-                    "PR #9 is open: inspect its reviews, checks, and mergeability "
-                    "every 4 minutes; fix and resolve review feedback, CI failures, "
-                    "and conflicts until the PR merges."
+                    "Handoff incomplete: open a pull request with gh pr create "
+                    "--base trunk --head task/2."
                 )
             },
         )
+
+    def test_stop_leaves_an_open_pull_request_to_the_delivery_loop(self):
+        self.create_task_commit()
+        run("git", "push", "-u", "origin", "task/2", cwd=self.repo)
+        self.set_pull_request()
+
+        result = self.hook()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
 
     def test_cursor_stop_is_silent_when_the_turn_did_not_complete(self):
         self.create_task_commit()

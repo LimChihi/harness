@@ -21,6 +21,8 @@ const fileSizeHookCommand = hookCommand(fileSizeHookRelativePath);
 const handoffHookSource = join(packageRoot, 'hooks/handoff.py');
 const handoffHookRelativePath = '.agents/hooks/harness/handoff.py';
 const handoffHookCommand = hookCommand(handoffHookRelativePath);
+const deliverySource = join(packageRoot, 'hooks/delivery.py');
+const cleanupSource = join(packageRoot, 'hooks/cleanup.py');
 const codexEditMatcher = '^apply_patch$';
 const cursorEditMatcher = '^(Write|Delete)$';
 const obsoleteFileSizeHookPaths = [
@@ -30,10 +32,22 @@ const obsoleteFileSizeHookPaths = [
 const obsoleteHandoffHookPaths = ['.codex/hooks/harness/handoff.py'];
 const obsoleteFileSizeHookCommands = obsoleteFileSizeHookPaths.map(hookCommand);
 const obsoleteHandoffHookCommands = obsoleteHandoffHookPaths.map(hookCommand);
-const skillFiles = [
-  { path: 'SKILL.md', mode: 0o644 },
-  { path: 'agents/openai.yaml', mode: 0o644 },
-  { path: 'scripts/start.py', mode: 0o755 },
+const skills = [
+  {
+    name: 'imp',
+    files: [
+      { path: 'SKILL.md', mode: 0o644 },
+      { path: 'agents/openai.yaml', mode: 0o644 },
+      { path: 'scripts/start.py', mode: 0o755 },
+    ],
+  },
+  {
+    name: 'implement',
+    files: [
+      { path: 'SKILL.md', mode: 0o644 },
+      { path: 'agents/openai.yaml', mode: 0o644 },
+    ],
+  },
 ];
 
 function usage() {
@@ -42,6 +56,8 @@ function usage() {
 Commands:
   install  Install the project-local agent tools into a Git repository
   state    Report the current Git and GitHub handoff state
+  await    Block until the current branch's pull request needs its author
+  cleanup  Remove worktrees whose pull request merged
 
 Options:
   --repo <path>  Repository or subdirectory to use (default: cwd)
@@ -64,6 +80,7 @@ function repositoryRoot(start) {
 
 function parseRepositoryArguments(args) {
   let repo = process.cwd();
+  const rest = [];
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--repo') {
@@ -78,9 +95,9 @@ function parseRepositoryArguments(args) {
       console.log(usage());
       return null;
     }
-    throw new Error(`unknown argument: ${argument}`);
+    rest.push(argument);
   }
-  return { repo };
+  return { repo, rest };
 }
 
 async function readHooksConfig(path, defaults) {
@@ -231,10 +248,12 @@ async function install(repo) {
   for (const relativePath of [...obsoleteFileSizeHookPaths, ...obsoleteHandoffHookPaths]) {
     await rm(join(root, relativePath), { force: true });
   }
-  for (const file of skillFiles) {
-    const source = join(packageRoot, 'skills/imp', file.path);
-    const target = join(root, '.agents/skills/imp', file.path);
-    await atomicWrite(target, await readFile(source), file.mode);
+  for (const skill of skills) {
+    for (const file of skill.files) {
+      const source = join(packageRoot, 'skills', skill.name, file.path);
+      const target = join(root, '.agents/skills', skill.name, file.path);
+      await atomicWrite(target, await readFile(source), file.mode);
+    }
   }
 
   console.log(`Installed ${packageJson.name}@${packageJson.version} in ${root}`);
@@ -242,7 +261,9 @@ async function install(repo) {
   console.log(`  ${handoffHookRelativePath}`);
   console.log(`  ${codexHooksRelativePath}`);
   console.log(`  ${cursorHooksRelativePath}`);
-  console.log('  .agents/skills/imp/');
+  for (const skill of skills) {
+    console.log(`  .agents/skills/${skill.name}/`);
+  }
   console.log('Review and trust the project hook with /hooks in Codex.');
 }
 
@@ -261,6 +282,17 @@ function state(repo) {
   }
 }
 
+function delegate(source, repo, args, failure) {
+  const root = repositoryRoot(repo);
+  try {
+    execFileSync('/usr/bin/python3', [source, '--repo', root, ...args], {
+      stdio: 'inherit',
+    });
+  } catch (error) {
+    throw new Error(`${failure}: ${error.message}`);
+  }
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === '--help' || command === '-h' || command === undefined) {
@@ -271,18 +303,30 @@ async function main() {
     console.log(packageJson.version);
     return;
   }
-  if (!['install', 'state'].includes(command)) {
+  if (!['install', 'state', 'await', 'cleanup'].includes(command)) {
     throw new Error(`unknown command: ${command}`);
   }
 
   const options = parseRepositoryArguments(args);
-  if (options !== null) {
-    if (command === 'install') {
-      await install(options.repo);
-    } else {
-      state(options.repo);
-    }
+  if (options === null) {
+    return;
   }
+  if (command === 'await') {
+    delegate(deliverySource, options.repo, options.rest, 'cannot await the pull request');
+    return;
+  }
+  if (command === 'cleanup') {
+    delegate(cleanupSource, options.repo, options.rest, 'cannot clean up worktrees');
+    return;
+  }
+  if (options.rest.length > 0) {
+    throw new Error(`unknown argument: ${options.rest[0]}`);
+  }
+  if (command === 'install') {
+    await install(options.repo);
+    return;
+  }
+  state(options.repo);
 }
 
 main().catch((error) => {
