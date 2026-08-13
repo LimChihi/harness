@@ -21,8 +21,15 @@ import os
 import sys
 from pathlib import Path
 
-state = json.loads(Path(os.environ["FAKE_GH_STATE"]).read_text())
+path = Path(os.environ["FAKE_GH_STATE"])
+state = json.loads(path.read_text())
 args = sys.argv[1:]
+
+if args[:2] == ["pr", "view"] and state.get("fail", 0) > 0:
+    state["fail"] -= 1
+    path.write_text(json.dumps(state))
+    print("Connection closed by 20.205.243.166 port 22", file=sys.stderr)
+    sys.exit(1)
 
 if args[:2] == ["repo", "view"]:
     print(json.dumps({"nameWithOwner": "owner/project"}))
@@ -177,10 +184,11 @@ class AwaitTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp)
 
-    def write_state(self, checks=(), threads=(), log="", state="OPEN"):
+    def write_state(self, checks=(), threads=(), log="", state="OPEN", fail=0):
         self.state.write_text(
             json.dumps(
                 {
+                    "fail": fail,
                     "list": [{"number": 9}],
                     "pull_request": {
                         "number": 9,
@@ -204,14 +212,20 @@ class AwaitTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def await_report(self):
-        result = subprocess.run(
-            ["python3", str(MODULE), "--repo", str(self.repo), "--timeout", "0"],
+    def run_await(self):
+        return subprocess.run(
+            [
+                "python3", str(MODULE), "--repo", str(self.repo),
+                "--timeout", "0", "--interval", "0",
+            ],
             env=self.env,
             capture_output=True,
             text=True,
             check=False,
         )
+
+    def await_report(self):
+        result = self.run_await()
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
@@ -258,6 +272,19 @@ class AwaitTests(unittest.TestCase):
         self.write_state(checks=[check("Integration", "SUCCESS")], state="MERGED")
 
         self.assertIn("STATUS: MERGED", self.await_report())
+
+    def test_a_long_poll_outlives_brief_github_failures(self):
+        self.write_state(checks=[check("Integration", "SUCCESS")], fail=2)
+
+        self.assertIn("STATUS: READY", self.await_report())
+
+    def test_a_standing_github_failure_ends_the_poll(self):
+        self.write_state(checks=[check("Integration", "SUCCESS")], fail=9)
+
+        result = self.run_await()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Connection closed", result.stderr)
 
     def test_a_pending_check_times_out_instead_of_blocking(self):
         self.write_state(checks=[check("Integration", None, status="IN_PROGRESS")])

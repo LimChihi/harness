@@ -12,6 +12,7 @@ from pathlib import Path
 POLL_SECONDS = 30
 TIMEOUT_SECONDS = 25 * 60
 LOG_TAIL_LINES = 60
+TOLERATED_POLL_FAILURES = 3
 FAILED_CONCLUSIONS = frozenset(
     {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 )
@@ -305,13 +306,22 @@ def await_pull_request(start, timeout, interval):
         return f"BRANCH: {branch}\nSTATUS: NO_PULL_REQUEST"
 
     deadline = time.monotonic() + timeout
+    failures = 0
     while True:
-        observation = observe(root, repository, number)
-        if observation["status"] != "PENDING":
-            return report(root, observation)
-        if time.monotonic() >= deadline:
-            observation["status"] = "TIMEOUT"
-            return report(root, observation)
+        try:
+            observation = observe(root, repository, number)
+        except DeliveryError:
+            # A long poll outlives brief GitHub outages, but not a standing one.
+            failures += 1
+            if failures >= TOLERATED_POLL_FAILURES:
+                raise
+        else:
+            failures = 0
+            if observation["status"] != "PENDING":
+                return report(root, observation)
+            if time.monotonic() >= deadline:
+                observation["status"] = "TIMEOUT"
+                return report(root, observation)
         time.sleep(interval)
 
 
