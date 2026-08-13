@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = SOURCE_ROOT / "hooks/file_size_hint.py"
+MODULE_PATH = SOURCE_ROOT / "skills/setup-harness/hooks/file_size_hint.py"
 SPEC = importlib.util.spec_from_file_location("file_size_hint", MODULE_PATH)
 file_size_hint = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(file_size_hint)

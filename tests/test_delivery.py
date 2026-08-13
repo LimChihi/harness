@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "hooks" / "delivery.py"
+MODULE = ROOT / "skills" / "implement" / "scripts" / "delivery.py"
 SPEC = importlib.util.spec_from_file_location("delivery", MODULE)
 delivery = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(delivery)

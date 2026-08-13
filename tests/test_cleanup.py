@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "hooks" / "cleanup.py"
+MODULE = ROOT / "skills" / "implement" / "scripts" / "cleanup.py"
 SPEC = importlib.util.spec_from_file_location("cleanup", MODULE)
 cleanup_module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(cleanup_module)

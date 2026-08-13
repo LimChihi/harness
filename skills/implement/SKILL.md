@@ -44,9 +44,9 @@ merges on. Merging itself belongs to the repository.
 1. Run the repository's checks and reach green.
 2. Push the branch and open a pull request against the default branch, using
    ordinary Git and GitHub commands.
-3. Run `npx @limchihi/harness await`. It blocks until the pull request needs
-   you, then reports what it found. Answer the report, run it again, and repeat
-   until it reports `MERGED` or `READY`.
+3. Run this skill's `scripts/delivery.py`. It blocks until the pull request
+   needs you, then reports what it found. Answer the report, run it again, and
+   repeat until it reports `MERGED` or `READY`.
 
 Each `STATUS` the report can carry:
 
@@ -63,10 +63,7 @@ Each `STATUS` the report can carry:
   next `await` reports the merge; otherwise delivery is complete and the merge
   belongs to the reviewer.
 - `MERGED` — the work landed.
-- `TIMEOUT` — nothing changed within the window. Run `await` again.
+- `TIMEOUT` — nothing changed within the window. Run it again.
 
-Once the pull request has merged, run `npx @limchihi/harness cleanup` from
+Once the pull request has merged, run this skill's `scripts/cleanup.py` from
 outside the ticket's worktree to remove it and release what it held.
-
-Run `npx @limchihi/harness state` at any point the branch, remote, or
-pull-request relationship needs orientation.

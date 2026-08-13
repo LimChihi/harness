@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "bin" / "harness.js"
-HOOK = ROOT / "hooks" / "handoff.py"
+
+HOOK = ROOT / "skills" / "setup-harness" / "hooks" / "handoff.py"
 SPEC = importlib.util.spec_from_file_location("handoff", HOOK)
 handoff = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(handoff)
@@ -189,8 +189,8 @@ else:
         self.create_task_commit()
 
         result = run(
-            "node",
-            str(CLI),
+            "python3",
+            str(HOOK),
             "state",
             "--repo",
             str(self.repo),
