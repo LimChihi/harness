@@ -66,7 +66,7 @@ change. Running this skill again leaves a hand-tuned configuration as it is.
 
 **Section A — Merge automation.**
 
-> Explainer: `/implement` makes every merge condition hold and then stops.
+> Explainer: `/implement` makes every merge condition hold and waits.
 > Something else does the merging. Mergify is the default here because GitHub's
 > own required checks and auto-merge need a paid plan on a private repository.
 
@@ -83,8 +83,7 @@ Offer these alternatives:
   being renamed, at the cost of a race: a pull request whose checks have not
   been created yet satisfies both counts. Propose it only when the required set
   genuinely varies.
-- **No automation** — the reviewer merges by hand. `/implement` then ends at
-  `READY` instead of at the merge, which is a complete delivery.
+- **No automation** — the reviewer merges by hand while `/implement` waits.
 
 When `.mergify.yml` already exists, change only the rule this skill owns and
 leave the rest of the file as it stands.

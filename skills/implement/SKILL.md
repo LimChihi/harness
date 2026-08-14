@@ -38,15 +38,15 @@ Commit your work to the current branch.
 
 ## Deliver
 
-Delivery ends when the pull request carries every condition its repository
-merges on. Merging itself belongs to the repository.
+Delivery ends when the pull request merges. Merging itself belongs to the
+repository.
 
 1. Run the repository's checks and reach green.
 2. Push the branch and open a pull request against the default branch, using
    ordinary Git and GitHub commands.
 3. Run this skill's `scripts/delivery.py`. It blocks until the pull request
    needs you, then reports what it found. Answer the report, run it again, and
-   repeat until it reports `MERGED` or `READY`.
+   repeat until it reports `MERGED`.
 
 Each `STATUS` the report can carry:
 
@@ -59,9 +59,6 @@ Each `STATUS` the report can carry:
   command that closes one. A thread marked `answered-not-resolved` already has
   your reply and needs only the resolve. Every thread ends resolved.
 - `CONFLICT` — reconcile the branch against the default branch and push.
-- `READY` — every condition holds. If the repository merges on its own, the
-  next `await` reports the merge; otherwise delivery is complete and the merge
-  belongs to the reviewer.
 - `MERGED` — the work landed.
 - `TIMEOUT` — nothing changed within the window. Run it again.
 

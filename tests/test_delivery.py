@@ -175,8 +175,10 @@ class ObservationTests(unittest.TestCase):
             self.observe("OPEN", checks=[check("A", None, status="QUEUED")]), "PENDING"
         )
 
-    def test_a_clean_open_pull_request_is_ready(self):
-        self.assertEqual(self.observe("OPEN", checks=[check("A", "SUCCESS")]), "READY")
+    def test_a_clean_open_pull_request_keeps_waiting(self):
+        self.assertEqual(
+            self.observe("OPEN", checks=[check("A", "SUCCESS")]), "PENDING"
+        )
 
 
 class AwaitTests(unittest.TestCase):
@@ -280,13 +282,13 @@ class AwaitTests(unittest.TestCase):
         self.assertIn("UNRESOLVED_THREAD: PRRT_2 src/main.py:12 by reviewer unanswered", report)
         self.assertIn("resolveReviewThread", report)
 
-    def test_resolved_threads_leave_a_green_pull_request_ready(self):
+    def test_resolved_threads_leave_a_green_pull_request_waiting_for_merge(self):
         self.write_state(
             checks=[check("Integration", "SUCCESS")],
             threads=[thread("PRRT_1", resolved=True)],
         )
 
-        self.assertIn("STATUS: READY", self.await_report())
+        self.assertIn("STATUS: TIMEOUT", self.await_report())
 
     def test_reports_the_merge(self):
         self.write_state(checks=[check("Integration", "SUCCESS")], state="MERGED")
@@ -294,9 +296,11 @@ class AwaitTests(unittest.TestCase):
         self.assertIn("STATUS: MERGED", self.await_report())
 
     def test_a_long_poll_outlives_brief_github_failures(self):
-        self.write_state(checks=[check("Integration", "SUCCESS")], fail=2)
+        self.write_state(
+            checks=[check("Integration", "SUCCESS")], state="MERGED", fail=2
+        )
 
-        self.assertIn("STATUS: READY", self.await_report())
+        self.assertIn("STATUS: MERGED", self.await_report())
 
     def test_a_standing_github_failure_ends_the_poll(self):
         self.write_state(checks=[check("Integration", "SUCCESS")], fail=9)

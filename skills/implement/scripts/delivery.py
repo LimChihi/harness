@@ -260,10 +260,8 @@ def observe(root, repository, number):
         status = "CHECK_FAILURE"
     elif threads:
         status = "THREADS_UNRESOLVED"
-    elif pending_checks(checks):
-        status = "PENDING"
     else:
-        status = "READY"
+        status = "PENDING"
 
     return {
         "status": status,

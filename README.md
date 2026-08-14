@@ -52,9 +52,9 @@ operations.
 a pull request costs it a turn. It polls on the agent's behalf and returns only
 when the pull request needs its author, reporting `CHECK_FAILURE` with the tail
 of the failing log, `UNRESOLVED_THREAD` for each open review thread, `CONFLICT`,
-`READY`, `MERGED`, or `CLOSED`. A thread the author already replied to but left
-open is marked `answered-not-resolved`, the state that silently blocks a merge.
-It waits through pending checks and returns `TIMEOUT` rather than blocking past
+`MERGED`, or `CLOSED`. A thread the author already replied to but left open is
+marked `answered-not-resolved`, the state that silently blocks a merge. It waits
+through green and pending checks and returns `TIMEOUT` rather than blocking past
 its window. It reports; it does not prescribe.
 
 `scripts/cleanup.py` removes every worktree whose pull request merged, together
