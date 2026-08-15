@@ -267,30 +267,34 @@ def read_snapshot(path, payload):
     return value["line_counts"]
 
 
-def post_tool_output(hints):
+def post_tool_output(event, hints):
     if not hints:
         return None
     context = "\n".join(hints)
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": context,
-        },
-        "additional_context": context,
-    }
+    if event == "PostToolUse":
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": context,
+            },
+        }
+    if event == "postToolUse":
+        return {"additional_context": context}
+    raise ValueError(f"unsupported post-tool event: {event}")
 
 
 def main():
     payload = json.load(sys.stdin)
     path = snapshot_path(payload)
-    event = normalize_event(payload["hook_event_name"])
+    event_name = payload["hook_event_name"]
+    event = normalize_event(event_name)
     if event == "PreToolUse":
         write_snapshot(path, payload)
         return
 
     before_counts = read_snapshot(path, payload)
     try:
-        output = post_tool_output(collect_hints(payload, before_counts))
+        output = post_tool_output(event_name, collect_hints(payload, before_counts))
     finally:
         path.unlink()
     if output is not None:

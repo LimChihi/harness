@@ -175,7 +175,6 @@ class FileSizeHintTests(unittest.TestCase):
                     "hookEventName": "PostToolUse",
                     "additionalContext": hint,
                 },
-                "additional_context": hint,
             },
         )
 
@@ -190,8 +189,13 @@ class FileSizeHintTests(unittest.TestCase):
 
         self.assertEqual(pre.stdout, "")
         self.assertEqual(
-            json.loads(post.stdout)["additional_context"],
-            "large.py: 801 lines (>800). Check responsibility before adding more code.",
+            json.loads(post.stdout),
+            {
+                "additional_context": (
+                    "large.py: 801 lines (>800). "
+                    "Check responsibility before adding more code."
+                ),
+            },
         )
 
     def test_cursor_delete_reports_no_growth(self):
