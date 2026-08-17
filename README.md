@@ -26,21 +26,23 @@ what changed.
 
 ## Skills
 
-- `implement` — claim a ticket or spec, build it in its own worktree, and
-  deliver it through review to merge. Also runs without an issue, on work the
-  conversation described.
+- `implement` — build and deliver a ticket directly, or plan and integrate work
+  for a spec. Also runs without an issue, on work the conversation described.
 - `setup-harness` — the per-repository wiring above.
 
 ## Implementation entry point
 
-`/implement #123` accepts a GitHub ticket or a spec composed of tickets.
-Independent tickets in a spec can be coordinated in parallel.
+`/implement #123` accepts a GitHub ticket or a spec composed of tickets. The
+main agent implements a ticket directly. For a spec, it builds the task plan,
+chooses which tasks to implement or delegate, and integrates their results on
+the spec branch before one final delivery.
 
-The bundled start script identifies specs before mutation and reports their
-ready and blocked tickets. For a leaf ticket, it uses `gh` to claim the issue
-and Git to create or recover its `task/123` worktree, then reports the worktree,
-branch state, and existing pull request. Repository-specific worktree
-initialization remains a property of the target repository.
+The bundled start script identifies specs before mutation and reports tracker
+readiness and blockers as planning facts. For a leaf ticket, it uses `gh` to
+claim the issue and Git to create or recover its `task/123` worktree, then
+reports the worktree, branch state, and existing pull request.
+Repository-specific worktree initialization remains a property of the target
+repository.
 
 Checks, commits, pushes, and pull requests stay with the repository's own
 command and ordinary Git and GitHub tools. Harness does not wrap those

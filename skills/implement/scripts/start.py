@@ -120,7 +120,7 @@ def spec_report(root, repository, issue, sub_issues):
 
     lines = [f"SPEC {repository}#{issue}"]
     lines.append(
-        "READY: "
+        "TRACKER_READY: "
         + (", ".join(issue_ref(value, repository) for value in ready) or "none")
     )
     if blocked:
@@ -128,10 +128,12 @@ def spec_report(root, repository, issue, sub_issues):
             dependencies = ", ".join(
                 issue_ref(blocker, repository) for blocker in blockers
             )
-            lines.append(f"BLOCKED: {issue_ref(value, repository)} by {dependencies}")
+            lines.append(
+                f"TRACKER_BLOCKED: {issue_ref(value, repository)} by {dependencies}"
+            )
     else:
-        lines.append("BLOCKED: none")
-    lines.append(f"COMPLETE: {'yes' if not open_issues else 'no'}")
+        lines.append("TRACKER_BLOCKED: none")
+    lines.append(f"TRACKER_COMPLETE: {'yes' if not open_issues else 'no'}")
     return "\n".join(lines)
 
 
