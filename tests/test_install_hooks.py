@@ -79,10 +79,7 @@ class InstallHooksTests(unittest.TestCase):
                     }
                 ],
             )
-        self.assertEqual(
-            self.handlers(codex, "Stop"),
-            [{"type": "command", "command": command(HANDOFF_HOOK), "timeout": 30}],
-        )
+        self.assertNotIn("Stop", codex["hooks"])
 
         cursor = self.config(".cursor/hooks.json")
         self.assertEqual(cursor["version"], 1)
@@ -97,10 +94,7 @@ class InstallHooksTests(unittest.TestCase):
                     }
                 ],
             )
-        self.assertEqual(
-            cursor["hooks"]["stop"],
-            [{"command": command(HANDOFF_HOOK), "timeout": 30, "loop_limit": None}],
-        )
+        self.assertNotIn("stop", cursor["hooks"])
 
     def test_preserves_hooks_the_repository_already_had(self):
         self.write_config(
@@ -114,7 +108,14 @@ class InstallHooksTests(unittest.TestCase):
                             "matcher": "^Bash$",
                             "hooks": [{"type": "command", "command": "./check-bash"}],
                         }
-                    ]
+                    ],
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": "./keep-stop"}
+                            ]
+                        }
+                    ],
                 },
             },
         )
@@ -125,6 +126,7 @@ class InstallHooksTests(unittest.TestCase):
                 "hooks": {
                     "beforeShellExecution": [{"command": "./audit-shell"}],
                     "preToolUse": [{"command": "./scan-secrets", "matcher": "^Write$"}],
+                    "stop": [{"command": "./keep-stop"}],
                 },
             },
         )
@@ -138,6 +140,10 @@ class InstallHooksTests(unittest.TestCase):
             [handler["command"] for handler in self.handlers(codex, "PreToolUse")],
             ["./check-bash", command(FILE_SIZE_HOOK)],
         )
+        self.assertEqual(
+            self.handlers(codex, "Stop"),
+            [{"type": "command", "command": "./keep-stop"}],
+        )
 
         cursor = self.config(".cursor/hooks.json")
         self.assertEqual(cursor["hooks"]["beforeShellExecution"], [{"command": "./audit-shell"}])
@@ -145,6 +151,7 @@ class InstallHooksTests(unittest.TestCase):
             [entry["command"] for entry in cursor["hooks"]["preToolUse"]],
             ["./scan-secrets", command(FILE_SIZE_HOOK)],
         )
+        self.assertEqual(cursor["hooks"]["stop"], [{"command": "./keep-stop"}])
 
     def test_reinstall_is_idempotent(self):
         self.install()
@@ -163,7 +170,7 @@ class InstallHooksTests(unittest.TestCase):
             first,
         )
 
-    def test_migrates_hooks_left_at_their_previous_paths(self):
+    def test_migrates_file_size_hooks_and_removes_handoff_hooks(self):
         for relative in (
             ".codex/hooks/file_size_hint.py",
             ".codex/hooks/harness/file_size_hint.py",
@@ -196,6 +203,11 @@ class InstallHooksTests(unittest.TestCase):
                             "hooks": [
                                 {
                                     "type": "command",
+                                    "command": command(HANDOFF_HOOK),
+                                    "timeout": 30,
+                                },
+                                {
+                                    "type": "command",
                                     "command": command(".agents/hooks/harness/handoff.py"),
                                     "timeout": 30,
                                 }
@@ -203,6 +215,21 @@ class InstallHooksTests(unittest.TestCase):
                         }
                     ],
                 }
+            },
+        )
+        self.write_config(
+            ".cursor/hooks.json",
+            {
+                "version": 1,
+                "hooks": {
+                    "stop": [
+                        {
+                            "command": command(HANDOFF_HOOK),
+                            "timeout": 30,
+                            "loop_limit": None,
+                        }
+                    ]
+                },
             },
         )
 
@@ -213,10 +240,8 @@ class InstallHooksTests(unittest.TestCase):
             [handler["command"] for handler in self.handlers(codex, "PreToolUse")],
             [command(FILE_SIZE_HOOK)],
         )
-        self.assertEqual(
-            [handler["command"] for handler in self.handlers(codex, "Stop")],
-            [command(HANDOFF_HOOK)],
-        )
+        self.assertNotIn("Stop", codex["hooks"])
+        self.assertNotIn("stop", self.config(".cursor/hooks.json")["hooks"])
         for relative in (
             ".codex/hooks/file_size_hint.py",
             ".agents/hooks/harness/file_size_hint.py",

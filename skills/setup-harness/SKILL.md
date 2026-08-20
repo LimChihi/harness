@@ -9,8 +9,7 @@ disable-model-invocation: true
 `/implement` carries a ticket through review to merge. Three things around it
 are properties of the repository rather than of the skill:
 
-- **Agent hooks** — the file-size hints and the handoff guard, wired into Codex
-  and Cursor
+- **Agent hooks** — the file-size hints, wired into Codex and Cursor
 - **Merge automation** — what merges a pull request once its conditions hold,
   so the agent never merges its own work
 - **Worktree cleanup** — what a repository releases when a merged worktree goes

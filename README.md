@@ -67,21 +67,6 @@ Every call that crosses the network retries up to a bound and re-raises the last
 failure past it. Local Git calls stay unwrapped: one of those failing is a fact
 worth surfacing.
 
-## Handoff state
-
-```bash
-python3 .agents/skills/setup-harness/hooks/handoff.py state
-```
-
-Reports the current worktree, default-branch relationship, remote publication,
-and pull request without changing repository state.
-
-The installed stop hook consumes the same state. It asks the agent to continue
-when committing, pushing, or opening a pull request is the single clear missing
-step, and falls silent once the pull request exists — an open pull request
-belongs to the delivery loop, not to a per-turn reminder. Codex receives the
-guidance as a blocking `Stop` decision and Cursor as a `followup_message`.
-
 ## File size hints
 
 The hook observes Codex `apply_patch` edits and Cursor `Write` and `Delete`

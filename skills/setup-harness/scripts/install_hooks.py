@@ -14,13 +14,12 @@ CURSOR_CONFIG = ".cursor/hooks.json"
 CODEX_EDIT_MATCHER = "^apply_patch$"
 CURSOR_EDIT_MATCHER = "^(Write|Delete)$"
 FILE_SIZE_TIMEOUT = 5
-HANDOFF_TIMEOUT = 30
 OBSOLETE_FILE_SIZE_PATHS = (
     ".codex/hooks/file_size_hint.py",
     ".codex/hooks/harness/file_size_hint.py",
     ".agents/hooks/harness/file_size_hint.py",
 )
-OBSOLETE_HANDOFF_PATHS = (
+REMOVED_HANDOFF_PATHS = (
     ".codex/hooks/harness/handoff.py",
     ".agents/hooks/harness/handoff.py",
 )
@@ -58,7 +57,7 @@ def skill_paths(root):
         ) from None
     return {
         "file_size_hint": (relative / "file_size_hint.py").as_posix(),
-        "handoff": (relative / "handoff.py").as_posix(),
+        "removed_handoff": (relative / "handoff.py").as_posix(),
     }
 
 
@@ -108,6 +107,38 @@ def install_cursor(config, event, entry, obsolete):
     config["hooks"][event] = [*kept, entry]
 
 
+def remove_codex(config, event, commands):
+    if event not in config["hooks"]:
+        return
+    groups = []
+    for group in retained(
+        config["hooks"][event], event, commands[0], commands[1:], True
+    ):
+        handlers = [
+            handler
+            for handler in group["hooks"]
+            if handler.get("command") not in commands
+        ]
+        if handlers:
+            groups.append({**group, "hooks": handlers})
+    if groups:
+        config["hooks"][event] = groups
+    else:
+        del config["hooks"][event]
+
+
+def remove_cursor(config, event, commands):
+    if event not in config["hooks"]:
+        return
+    entries = retained(
+        config["hooks"][event], event, commands[0], commands[1:], False
+    )
+    if entries:
+        config["hooks"][event] = entries
+    else:
+        del config["hooks"][event]
+
+
 def write(path, contents):
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
@@ -125,9 +156,11 @@ def install(start):
     root = repository_root(start)
     paths = skill_paths(root)
     file_size = command_for(paths["file_size_hint"])
-    handoff = command_for(paths["handoff"])
     obsolete_file_size = [command_for(path) for path in OBSOLETE_FILE_SIZE_PATHS]
-    obsolete_handoff = [command_for(path) for path in OBSOLETE_HANDOFF_PATHS]
+    removed_handoff = [
+        command_for(paths["removed_handoff"]),
+        *(command_for(path) for path in REMOVED_HANDOFF_PATHS),
+    ]
 
     codex_path = root / CODEX_CONFIG
     codex = read_config(codex_path, {"description": "Project-local Codex hooks."})
@@ -136,7 +169,7 @@ def install(start):
             codex, event, file_size, FILE_SIZE_TIMEOUT, CODEX_EDIT_MATCHER,
             obsolete_file_size,
         )
-    install_codex(codex, "Stop", handoff, HANDOFF_TIMEOUT, None, obsolete_handoff)
+    remove_codex(codex, "Stop", removed_handoff)
 
     cursor_path = root / CURSOR_CONFIG
     cursor = read_config(cursor_path, {"version": 1})
@@ -151,16 +184,11 @@ def install(start):
             },
             obsolete_file_size,
         )
-    install_cursor(
-        cursor,
-        "stop",
-        {"command": handoff, "timeout": HANDOFF_TIMEOUT, "loop_limit": None},
-        obsolete_handoff,
-    )
+    remove_cursor(cursor, "stop", removed_handoff)
 
     write(codex_path, json.dumps(codex, indent=2) + "\n")
     write(cursor_path, json.dumps(cursor, indent=2) + "\n")
-    for relative in (*OBSOLETE_FILE_SIZE_PATHS, *OBSOLETE_HANDOFF_PATHS):
+    for relative in (*OBSOLETE_FILE_SIZE_PATHS, *REMOVED_HANDOFF_PATHS):
         (root / relative).unlink(missing_ok=True)
 
     return "\n".join(
@@ -168,7 +196,6 @@ def install(start):
             f"WROTE: {CODEX_CONFIG}",
             f"WROTE: {CURSOR_CONFIG}",
             f"HOOKS: {paths['file_size_hint']}",
-            f"HOOKS: {paths['handoff']}",
         ]
     )
 
