@@ -16,6 +16,7 @@ SPEC.loader.exec_module(install_hooks)
 
 FILE_SIZE_HOOK = ".agents/skills/setup-harness/hooks/file_size_hint.py"
 HANDOFF_HOOK = ".agents/skills/setup-harness/hooks/handoff.py"
+POST_COMMIT_HOOK = ".agents/skills/setup-harness/hooks/post-commit"
 
 
 def command(relative_path):
@@ -61,6 +62,14 @@ class InstallHooksTests(unittest.TestCase):
 
     def test_points_both_agents_at_the_installed_skill(self):
         self.install()
+
+        post_commit = self.repo / ".git/hooks/post-commit"
+        self.assertTrue(post_commit.is_file())
+        self.assertTrue(post_commit.stat().st_mode & 0o111)
+        self.assertEqual(
+            post_commit.read_text(encoding="utf-8"),
+            install_hooks.git_hook_launcher(POST_COMMIT_HOOK),
+        )
 
         codex = self.config(".codex/hooks.json")
         for event in ("PreToolUse", "PostToolUse"):
@@ -155,6 +164,8 @@ class InstallHooksTests(unittest.TestCase):
 
     def test_reinstall_is_idempotent(self):
         self.install()
+        post_commit = self.repo / ".git/hooks/post-commit"
+        first_hook = post_commit.read_bytes()
         first = [
             (self.repo / path).read_text(encoding="utf-8")
             for path in (".codex/hooks.json", ".cursor/hooks.json")
@@ -162,6 +173,7 @@ class InstallHooksTests(unittest.TestCase):
 
         self.install()
 
+        self.assertEqual(post_commit.read_bytes(), first_hook)
         self.assertEqual(
             [
                 (self.repo / path).read_text(encoding="utf-8")
@@ -169,6 +181,17 @@ class InstallHooksTests(unittest.TestCase):
             ],
             first,
         )
+
+    def test_refuses_to_replace_an_existing_post_commit_hook(self):
+        post_commit = self.repo / ".git/hooks/post-commit"
+        post_commit.write_text("#!/bin/sh\n", encoding="utf-8")
+
+        result = self.install(check=False)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("refusing to replace existing Git hook", result.stderr)
+        self.assertEqual(post_commit.read_text(encoding="utf-8"), "#!/bin/sh\n")
+        self.assertFalse((self.repo / ".codex/hooks.json").exists())
 
     def test_migrates_file_size_hooks_and_removes_handoff_hooks(self):
         for relative in (
@@ -263,6 +286,21 @@ class InstallHooksTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.repo / ".codex/hooks.json").is_file())
         self.assertTrue((self.repo / ".cursor/hooks.json").is_file())
+
+    def test_installs_into_the_configured_git_hooks_path(self):
+        subprocess.run(
+            ["git", "-C", str(self.repo), "config", "core.hooksPath", ".githooks"],
+            check=True,
+        )
+
+        self.install()
+
+        post_commit = self.repo / ".githooks/post-commit"
+        self.assertTrue(post_commit.is_file())
+        self.assertEqual(
+            post_commit.read_text(encoding="utf-8"),
+            install_hooks.git_hook_launcher(POST_COMMIT_HOOK),
+        )
 
     def test_writes_nothing_when_a_configuration_is_invalid(self):
         for relative in (".codex/hooks.json", ".cursor/hooks.json"):

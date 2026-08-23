@@ -1,6 +1,6 @@
 ---
 name: setup-harness
-description: "Wire this repo for the harness delivery loop — agent hooks, merge automation, and worktree cleanup. Run once before the first /implement."
+description: "Wire this repo for the harness delivery loop — repository hooks, merge automation, and worktree cleanup. Run once before the first /implement."
 disable-model-invocation: true
 ---
 
@@ -9,7 +9,7 @@ disable-model-invocation: true
 `/implement` carries a ticket through review to merge. Three things around it
 are properties of the repository rather than of the skill:
 
-- **Agent hooks** — the file-size hints, wired into Codex and Cursor
+- **Repository hooks** — behavior invoked by agent and Git events
 - **Merge automation** — what merges a pull request once its conditions hold,
   so the agent never merges its own work
 - **Worktree cleanup** — what a repository releases when a merged worktree goes
@@ -45,12 +45,10 @@ Read what exists; assume nothing:
 
 ### 2. Wire the hooks
 
-Run this skill's `scripts/install_hooks.py`. It points both agents at the hooks
-inside this skill and preserves every other hook the repository already ran, so
-`npx skills@latest update` is the whole update story: the configuration keeps
-naming a path whose contents the update refreshes. It rewrites the same bytes
-every run, so ask nothing here and run it whether or not the hooks are already
-wired.
+Run this skill's `scripts/install_hooks.py`. The script owns the complete agent
+and Git hook installation and is idempotent, so ask nothing here and run it on
+every invocation. Keep hook membership and wiring in the installer; this step
+stays unchanged as hooks evolve.
 
 ### 3. Present findings and ask
 

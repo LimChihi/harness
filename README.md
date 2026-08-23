@@ -8,10 +8,9 @@ Project-local development tools for coding agents, shared by Codex and Cursor.
 npx skills@latest add limchihi/harness
 ```
 
-Then run `/setup-harness` once in the repository. It wires the agent hooks into
-`.codex/hooks.json` and `.cursor/hooks.json`, and asks how the repository merges
-and what a worktree owns. Commit what it writes so the tooling stays a property
-of the repository.
+Then run `/setup-harness` once in the repository. It installs the bundled
+repository hooks and asks how the repository merges and what a worktree owns.
+Commit what it writes so the tooling stays a property of the repository.
 
 ## Update
 

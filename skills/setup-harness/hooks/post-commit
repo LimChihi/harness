@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+base_ref="origin/main"
+behind="$(git rev-list --count "HEAD..$base_ref")"
+
+if [ "$behind" -gt 0 ]; then
+  unit="commits"
+  if [ "$behind" -eq 1 ]; then
+    unit="commit"
+  fi
+  echo "Current branch is $behind $unit behind $base_ref; consider rebasing."
+fi

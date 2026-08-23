@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ CURSOR_CONFIG = ".cursor/hooks.json"
 CODEX_EDIT_MATCHER = "^apply_patch$"
 CURSOR_EDIT_MATCHER = "^(Write|Delete)$"
 FILE_SIZE_TIMEOUT = 5
+POST_COMMIT_HOOK = "post-commit"
 OBSOLETE_FILE_SIZE_PATHS = (
     ".codex/hooks/file_size_hint.py",
     ".codex/hooks/harness/file_size_hint.py",
@@ -57,8 +59,51 @@ def skill_paths(root):
         ) from None
     return {
         "file_size_hint": (relative / "file_size_hint.py").as_posix(),
+        "post_commit": (relative / POST_COMMIT_HOOK).as_posix(),
         "removed_handoff": (relative / "handoff.py").as_posix(),
     }
+
+
+def git_hook_path(root, name):
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--git-path", f"hooks/{name}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise InstallError(f"cannot resolve Git hook path: {result.stderr.strip()}")
+    path = Path(result.stdout.strip())
+    if not path.is_absolute():
+        path = root / path
+    return Path(os.path.abspath(path))
+
+
+def git_hook_launcher(relative_path):
+    target = shlex.quote(relative_path)
+    return (
+        "#!/bin/sh\n"
+        f'exec "$(git rev-parse --show-toplevel)"/{target} "$@"\n'
+    )
+
+
+def install_git_hook(root, relative_source):
+    source = (root / relative_source).resolve()
+    destination = git_hook_path(root, POST_COMMIT_HOOK)
+    if not os.access(source, os.X_OK):
+        raise InstallError(f"Git hook is not executable: {source}")
+    launcher = git_hook_launcher(relative_source)
+    if destination.exists() and not destination.is_symlink():
+        if destination.is_file() and destination.read_bytes() == launcher.encode():
+            destination.chmod(0o755)
+            return destination
+        raise InstallError(f"refusing to replace existing Git hook: {destination}")
+    if destination.is_symlink():
+        raise InstallError(f"refusing to replace existing Git hook: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    write(destination, launcher)
+    destination.chmod(0o755)
+    return destination
 
 
 def read_config(path, defaults):
@@ -186,6 +231,8 @@ def install(start):
         )
     remove_cursor(cursor, "stop", removed_handoff)
 
+    post_commit = install_git_hook(root, paths["post_commit"])
+
     write(codex_path, json.dumps(codex, indent=2) + "\n")
     write(cursor_path, json.dumps(cursor, indent=2) + "\n")
     for relative in (*OBSOLETE_FILE_SIZE_PATHS, *REMOVED_HANDOFF_PATHS):
@@ -196,6 +243,7 @@ def install(start):
             f"WROTE: {CODEX_CONFIG}",
             f"WROTE: {CURSOR_CONFIG}",
             f"HOOKS: {paths['file_size_hint']}",
+            f"GIT HOOK: {post_commit}",
         ]
     )
 
