@@ -185,9 +185,9 @@ else:
         self.assertEqual(
             result.stdout,
             "SPEC owner/project#1\n"
-            "READY: #29\n"
-            "BLOCKED: #30 by #29\n"
-            "COMPLETE: no\n",
+            "TRACKER_READY: #29\n"
+            "TRACKER_BLOCKED: #30 by #29\n"
+            "TRACKER_COMPLETE: no\n",
         )
         self.assertEqual(self.assignments(1), [])
         self.assertFalse((self.temp / ".worktrees" / "owner-project-1").exists())
@@ -204,7 +204,7 @@ else:
             0,
         )
 
-    def test_reports_a_completed_spec(self):
+    def test_reports_a_tracker_completed_spec(self):
         self.update_issue(1, subIssues=[29, 30])
         self.update_issue(29, state="CLOSED")
         self.update_issue(30, state="CLOSED")
@@ -215,9 +215,9 @@ else:
         self.assertEqual(
             result.stdout,
             "SPEC owner/project#1\n"
-            "READY: none\n"
-            "BLOCKED: none\n"
-            "COMPLETE: yes\n",
+            "TRACKER_READY: none\n"
+            "TRACKER_BLOCKED: none\n"
+            "TRACKER_COMPLETE: yes\n",
         )
 
     def test_reports_recovered_worktree_state(self):
