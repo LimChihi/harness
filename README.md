@@ -70,8 +70,8 @@ worth surfacing.
 
 ## File size hints
 
-The hook observes Codex `apply_patch` edits and Cursor `Write` and `Delete`
-edits. It emits context when a file grows by more than 30 lines and ends above
+The hook observes Codex `apply_patch` edits, including patches nested inside the
+Codex `exec` tool, and Cursor `Write` and `Delete` edits. It emits context when a file grows by more than 30 lines and ends above
 one of these thresholds:
 
 - More than 800 lines: check whether the file still has one responsibility.

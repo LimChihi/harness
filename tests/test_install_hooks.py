@@ -84,7 +84,7 @@ class InstallHooksTests(unittest.TestCase):
                                 "timeout": 5,
                             }
                         ],
-                        "matcher": "^apply_patch$",
+                        "matcher": "^(apply_patch|exec)$",
                     }
                 ],
             )
@@ -209,7 +209,7 @@ class InstallHooksTests(unittest.TestCase):
                 "hooks": {
                     "PreToolUse": [
                         {
-                            "matcher": "^apply_patch$",
+                            "matcher": "^(apply_patch|exec)$",
                             "hooks": [
                                 {
                                     "type": "command",

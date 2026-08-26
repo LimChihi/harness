@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ast
 import hashlib
 import json
 import os
@@ -78,11 +79,39 @@ def session_id(payload):
 
 
 def patch_command(payload):
-    command = payload["tool_input"].get("command")
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, str):
+        command = tool_input
+    elif isinstance(tool_input, dict):
+        command = tool_input.get("command")
+    else:
+        command = None
     if isinstance(command, str) and (
         command.lstrip().startswith("***") or "\n*** " in command
     ):
         return command
+    if payload.get("tool_name") == "exec" and isinstance(command, str):
+        patches = []
+        for match in re.finditer(
+            r'''("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)''',
+            command,
+        ):
+            literal = match.group(0)
+            try:
+                if literal.startswith('"'):
+                    candidate = json.loads(literal)
+                elif literal.startswith("`"):
+                    candidate = literal[1:-1]
+                else:
+                    candidate = ast.literal_eval(literal)
+            except (ValueError, SyntaxError):
+                continue
+            if isinstance(candidate, str) and (
+                candidate.lstrip().startswith("*** Begin Patch") or "\n*** " in candidate
+            ):
+                patches.append(candidate)
+        if patches:
+            return "\n".join(patches)
     return None
 
 
@@ -92,6 +121,8 @@ def tool_edits(payload):
         return edited_files(command)
 
     tool_input = payload["tool_input"]
+    if payload.get("tool_name") == "exec":
+        return []
     path = tool_input.get("path") or tool_input.get("file_path")
     if path is None:
         raise ValueError("missing tool path")

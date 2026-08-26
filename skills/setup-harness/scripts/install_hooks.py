@@ -12,7 +12,7 @@ from pathlib import Path
 
 CODEX_CONFIG = ".codex/hooks.json"
 CURSOR_CONFIG = ".cursor/hooks.json"
-CODEX_EDIT_MATCHER = "^apply_patch$"
+CODEX_EDIT_MATCHER = "^(apply_patch|exec)$"
 CURSOR_EDIT_MATCHER = "^(Write|Delete)$"
 FILE_SIZE_TIMEOUT = 5
 POST_COMMIT_HOOK = "post-commit"

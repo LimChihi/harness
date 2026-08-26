@@ -75,6 +75,22 @@ class FileSizeHintTests(unittest.TestCase):
             )
         return payload
 
+    def exec_payload(self, source, event=None):
+        payload = {
+            "cwd": str(self.directory),
+            "tool_name": "exec",
+            "tool_input": {"command": source},
+        }
+        if event is not None:
+            payload.update(
+                {
+                    "session_id": "exec-session",
+                    "tool_use_id": f"exec-{self.directory.name}",
+                    "hook_event_name": event,
+                }
+            )
+        return payload
+
     def hints_after(self, command, mutate):
         payload = self.payload(command)
         before_counts = file_size_hint.capture_line_counts(payload)
@@ -177,6 +193,57 @@ class FileSizeHintTests(unittest.TestCase):
                 },
             },
         )
+
+    def test_emits_post_tool_context_for_patch_nested_in_exec(self):
+        path = self.directory / "large.py"
+        path.write_text("line\n" * 770, encoding="utf-8")
+        patch = self.update_patch("large.py", added=31)
+        patch_document = "*** Begin Patch\n" + patch + "\n*** End Patch"
+        source = f"const patch = {json.dumps(patch_document)};\ntext(await tools.apply_patch(patch));"
+        pre = self.run_hook(self.exec_payload(source, "PreToolUse"))
+        path.write_text("line\n" * 801, encoding="utf-8")
+        post = self.run_hook(self.exec_payload(source, "PostToolUse"))
+
+        self.assertEqual(pre.stdout, "")
+        self.assertEqual(
+            json.loads(post.stdout),
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": (
+                        "large.py: 801 lines (>800). "
+                        "Check responsibility before adding more code."
+                    ),
+                },
+            },
+        )
+
+    def test_emits_post_tool_context_for_raw_template_patch_nested_in_exec(self):
+        path = self.directory / "large.py"
+        path.write_text("line\n" * 770, encoding="utf-8")
+        patch = self.update_patch("large.py", added=31)
+        patch_document = "*** Begin Patch\n" + patch + "\n*** End Patch"
+        source = f"const patch = String.raw`{patch_document}`;\ntext(await tools.apply_patch(patch));"
+        pre = self.run_hook(self.exec_payload(source.replace("`", chr(96)), "PreToolUse"))
+        path.write_text("line\n" * 801, encoding="utf-8")
+        post = self.run_hook(self.exec_payload(source.replace("`", chr(96)), "PostToolUse"))
+
+        self.assertEqual(pre.stdout, "")
+        self.assertIn("large.py: 801 lines", post.stdout)
+
+    def test_ignores_exec_without_nested_patch(self):
+        payload = self.exec_payload("const result = await tools.exec_command({cmd: 'git status'});")
+        self.assertEqual(file_size_hint.tool_edits(payload), [])
+
+    def test_accepts_raw_exec_tool_input(self):
+        patch = self.update_patch("large.py", added=1)
+        patch_document = "*** Begin Patch\n" + patch + "\n*** End Patch"
+        payload = {
+            "cwd": str(self.directory),
+            "tool_name": "exec",
+            "tool_input": f"const patch = {json.dumps(patch_document)};",
+        }
+        self.assertEqual(file_size_hint.tool_edits(payload), [("large.py", "large.py")])
 
     def test_cursor_payload_resolves_the_repository_from_workspace_roots(self):
         path = self.directory / "large.py"
