@@ -13,8 +13,10 @@ from pathlib import Path
 CODEX_CONFIG = ".codex/hooks.json"
 CURSOR_CONFIG = ".cursor/hooks.json"
 CODEX_EDIT_MATCHER = "^(apply_patch|exec)$"
+CODEX_SHELL_MATCHER = "^(Bash|exec)$"
 CURSOR_EDIT_MATCHER = "^(Write|Delete)$"
 FILE_SIZE_TIMEOUT = 5
+GIT_SYNC_TIMEOUT = 5
 POST_COMMIT_HOOK = "post-commit"
 OBSOLETE_FILE_SIZE_PATHS = (
     ".codex/hooks/file_size_hint.py",
@@ -59,6 +61,7 @@ def skill_paths(root):
         ) from None
     return {
         "file_size_hint": (relative / "file_size_hint.py").as_posix(),
+        "git_sync_policy": (relative / "git_sync_policy.py").as_posix(),
         "post_commit": (relative / POST_COMMIT_HOOK).as_posix(),
         "removed_handoff": (relative / "handoff.py").as_posix(),
     }
@@ -201,6 +204,7 @@ def install(start):
     root = repository_root(start)
     paths = skill_paths(root)
     file_size = command_for(paths["file_size_hint"])
+    git_sync = command_for(paths["git_sync_policy"])
     obsolete_file_size = [command_for(path) for path in OBSOLETE_FILE_SIZE_PATHS]
     removed_handoff = [
         command_for(paths["removed_handoff"]),
@@ -214,6 +218,9 @@ def install(start):
             codex, event, file_size, FILE_SIZE_TIMEOUT, CODEX_EDIT_MATCHER,
             obsolete_file_size,
         )
+    install_codex(
+        codex, "PreToolUse", git_sync, GIT_SYNC_TIMEOUT, CODEX_SHELL_MATCHER, []
+    )
     remove_codex(codex, "Stop", removed_handoff)
 
     cursor_path = root / CURSOR_CONFIG
@@ -229,6 +236,12 @@ def install(start):
             },
             obsolete_file_size,
         )
+    install_cursor(
+        cursor,
+        "beforeShellExecution",
+        {"command": git_sync, "timeout": GIT_SYNC_TIMEOUT},
+        [],
+    )
     remove_cursor(cursor, "stop", removed_handoff)
 
     post_commit = install_git_hook(root, paths["post_commit"])
@@ -243,6 +256,7 @@ def install(start):
             f"WROTE: {CODEX_CONFIG}",
             f"WROTE: {CURSOR_CONFIG}",
             f"HOOKS: {paths['file_size_hint']}",
+            f"HOOKS: {paths['git_sync_policy']}",
             f"GIT HOOK: {post_commit}",
         ]
     )

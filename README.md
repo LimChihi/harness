@@ -82,6 +82,21 @@ one of these thresholds:
 Files with a suffix in `IGNORED_FILE_SUFFIXES` are skipped. The blacklist
 currently contains `.lock`.
 
+## Git synchronization policy
+
+The setup skill installs a pre-shell agent hook that keeps work branches from
+merging the default branch. It blocks `git merge` of the branch named by
+`origin/HEAD` unless the operation is explicitly `--ff-only`, and blocks
+`git pull` unless it explicitly uses `--rebase` or `--ff-only`. Recovery with
+`git merge --abort` or `--quit`, merges of other named branches, and pull
+request merging remain available.
+
+The hook inspects every direct Git invocation in a compound shell command,
+including commands joined by control operators, subshells, and shell `-c`.
+One violation blocks the complete tool call before any command runs. Commands
+hidden behind a repository script or task runner remain that repository's
+responsibility.
+
 ## Development
 
 ```bash

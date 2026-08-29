@@ -15,6 +15,7 @@ install_hooks = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(install_hooks)
 
 FILE_SIZE_HOOK = ".agents/skills/setup-harness/hooks/file_size_hint.py"
+GIT_SYNC_HOOK = ".agents/skills/setup-harness/hooks/git_sync_policy.py"
 HANDOFF_HOOK = ".agents/skills/setup-harness/hooks/handoff.py"
 POST_COMMIT_HOOK = ".agents/skills/setup-harness/hooks/post-commit"
 
@@ -72,22 +73,30 @@ class InstallHooksTests(unittest.TestCase):
         )
 
         codex = self.config(".codex/hooks.json")
-        for event in ("PreToolUse", "PostToolUse"):
-            self.assertEqual(
-                codex["hooks"][event],
-                [
-                    {
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": command(FILE_SIZE_HOOK),
-                                "timeout": 5,
-                            }
-                        ],
-                        "matcher": "^(apply_patch|exec)$",
-                    }
-                ],
-            )
+        file_size_entry = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": command(FILE_SIZE_HOOK),
+                    "timeout": 5,
+                }
+            ],
+            "matcher": "^(apply_patch|exec)$",
+        }
+        git_sync_entry = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": command(GIT_SYNC_HOOK),
+                    "timeout": 5,
+                }
+            ],
+            "matcher": "^(Bash|exec)$",
+        }
+        self.assertEqual(
+            codex["hooks"]["PreToolUse"], [file_size_entry, git_sync_entry]
+        )
+        self.assertEqual(codex["hooks"]["PostToolUse"], [file_size_entry])
         self.assertNotIn("Stop", codex["hooks"])
 
         cursor = self.config(".cursor/hooks.json")
@@ -103,6 +112,10 @@ class InstallHooksTests(unittest.TestCase):
                     }
                 ],
             )
+        self.assertEqual(
+            cursor["hooks"]["beforeShellExecution"],
+            [{"command": command(GIT_SYNC_HOOK), "timeout": 5}],
+        )
         self.assertNotIn("stop", cursor["hooks"])
 
     def test_preserves_hooks_the_repository_already_had(self):
@@ -147,7 +160,7 @@ class InstallHooksTests(unittest.TestCase):
         self.assertIs(codex["custom"], True)
         self.assertEqual(
             [handler["command"] for handler in self.handlers(codex, "PreToolUse")],
-            ["./check-bash", command(FILE_SIZE_HOOK)],
+            ["./check-bash", command(FILE_SIZE_HOOK), command(GIT_SYNC_HOOK)],
         )
         self.assertEqual(
             self.handlers(codex, "Stop"),
@@ -155,7 +168,13 @@ class InstallHooksTests(unittest.TestCase):
         )
 
         cursor = self.config(".cursor/hooks.json")
-        self.assertEqual(cursor["hooks"]["beforeShellExecution"], [{"command": "./audit-shell"}])
+        self.assertEqual(
+            cursor["hooks"]["beforeShellExecution"],
+            [
+                {"command": "./audit-shell"},
+                {"command": command(GIT_SYNC_HOOK), "timeout": 5},
+            ],
+        )
         self.assertEqual(
             [entry["command"] for entry in cursor["hooks"]["preToolUse"]],
             ["./scan-secrets", command(FILE_SIZE_HOOK)],
@@ -261,7 +280,7 @@ class InstallHooksTests(unittest.TestCase):
         codex = self.config(".codex/hooks.json")
         self.assertEqual(
             [handler["command"] for handler in self.handlers(codex, "PreToolUse")],
-            [command(FILE_SIZE_HOOK)],
+            [command(FILE_SIZE_HOOK), command(GIT_SYNC_HOOK)],
         )
         self.assertNotIn("Stop", codex["hooks"])
         self.assertNotIn("stop", self.config(".cursor/hooks.json")["hooks"])
