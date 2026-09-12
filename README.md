@@ -18,7 +18,7 @@ Commit what it writes so the tooling stays a property of the repository.
 npx skills@latest update
 ```
 
-Both skills carry the code they run, so this one command updates it all. The
+Each skill carries the code it runs, so this one command updates it all. The
 hook configuration names a path inside the installed skill rather than a copy of
 it, so nothing needs rewiring after an update, and `skills-lock.json` records
 what changed.
@@ -28,6 +28,11 @@ what changed.
 - `implement` — build and deliver a ticket directly, or plan and integrate work
   for a spec. Also runs without an issue, on work the conversation described.
 - `setup-harness` — the per-repository wiring above.
+- `xcode` — discover and call Xcode's tools through a bundled CLI, loading only
+  the selected tool contracts into agent context. Works across Apple-platform
+  projects; requires macOS, Python 3, Node.js/npm, and Xcode MCP support.
+  See [runtime setup](skills/xcode/references/setup.md) for prerequisites and
+  replacing an eager Xcode MCP registration.
 
 ## Implementation entry point
 

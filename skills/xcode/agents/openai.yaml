@@ -1,0 +1,6 @@
+interface:
+  display_name: "Xcode"
+  short_description: "Discover and use Xcode tools on demand"
+  default_prompt: "Use $xcode to work with this Apple-platform project."
+policy:
+  allow_implicit_invocation: true

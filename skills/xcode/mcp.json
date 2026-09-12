@@ -1,0 +1,9 @@
+{
+  "imports": [],
+  "mcpServers": {
+    "xcode": {
+      "command": ["xcrun", "mcpbridge"],
+      "lifecycle": "keep-alive"
+    }
+  }
+}
