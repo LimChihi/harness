@@ -1,0 +1,5 @@
+interface:
+  display_name: "Implement Spec"
+  short_description: "Deliver a spec's tickets through merge and cleanup"
+policy:
+  allow_implicit_invocation: false
