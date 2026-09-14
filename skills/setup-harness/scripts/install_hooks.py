@@ -18,6 +18,7 @@ CURSOR_EDIT_MATCHER = "^(Write|Delete)$"
 FILE_SIZE_TIMEOUT = 5
 GIT_SYNC_TIMEOUT = 5
 POST_COMMIT_HOOK = "post-commit"
+PROJECT_SKILL_HOOKS = ".agents/skills/setup-harness/hooks"
 OBSOLETE_FILE_SIZE_PATHS = (
     ".codex/hooks/file_size_hint.py",
     ".codex/hooks/harness/file_size_hint.py",
@@ -34,6 +35,8 @@ class InstallError(Exception):
 
 
 def command_for(relative_path):
+    if relative_path.startswith("~/"):
+        return f'/usr/bin/python3 "$HOME"/{shlex.quote(relative_path[2:])}'
     return f'/usr/bin/python3 "$(git rev-parse --show-toplevel)/{relative_path}"'
 
 
@@ -50,14 +53,16 @@ def repository_root(start):
 
 
 def skill_paths(root):
-    """The hooks run from the installed skill, so a project install is required."""
     hooks = Path(__file__).resolve().parent.parent / "hooks"
-    try:
+    home = Path.home().resolve()
+    if hooks.is_relative_to(root):
         relative = hooks.relative_to(root)
-    except ValueError:
+    elif hooks == home / PROJECT_SKILL_HOOKS:
+        relative = Path("~") / hooks.relative_to(home)
+    else:
         raise InstallError(
             f"this skill lives outside {root}; install it into the project with "
-            "npx skills@latest add limchihi/harness"
+            "npx skills@latest add limchihi/harness, or into user scope with --global"
         ) from None
     return {
         "file_size_hint": (relative / "file_size_hint.py").as_posix(),
@@ -83,6 +88,8 @@ def git_hook_path(root, name):
 
 
 def git_hook_launcher(relative_path):
+    if relative_path.startswith("~/"):
+        return f'#!/bin/sh\nexec "$HOME"/{shlex.quote(relative_path[2:])} "$@"\n'
     target = shlex.quote(relative_path)
     return (
         "#!/bin/sh\n"
@@ -91,13 +98,26 @@ def git_hook_launcher(relative_path):
 
 
 def install_git_hook(root, relative_source):
-    source = (root / relative_source).resolve()
+    source = (
+        Path(relative_source).expanduser()
+        if relative_source.startswith("~/") else root / relative_source
+    ).resolve()
     destination = git_hook_path(root, POST_COMMIT_HOOK)
     if not os.access(source, os.X_OK):
         raise InstallError(f"Git hook is not executable: {source}")
     launcher = git_hook_launcher(relative_source)
     if destination.exists() and not destination.is_symlink():
-        if destination.is_file() and destination.read_bytes() == launcher.encode():
+        managed = {
+            git_hook_launcher(path).encode()
+            for path in (
+                relative_source,
+                f"{PROJECT_SKILL_HOOKS}/{POST_COMMIT_HOOK}",
+                f"~/{PROJECT_SKILL_HOOKS}/{POST_COMMIT_HOOK}",
+            )
+        }
+        if destination.is_file() and destination.read_bytes() in managed:
+            if destination.read_bytes() != launcher.encode():
+                write(destination, launcher)
             destination.chmod(0o755)
             return destination
         raise InstallError(f"refusing to replace existing Git hook: {destination}")
@@ -206,8 +226,17 @@ def install(start):
     file_size = command_for(paths["file_size_hint"])
     git_sync = command_for(paths["git_sync_policy"])
     obsolete_file_size = [command_for(path) for path in OBSOLETE_FILE_SIZE_PATHS]
+    obsolete_file_size.extend(
+        command_for(f"{prefix}{PROJECT_SKILL_HOOKS}/file_size_hint.py")
+        for prefix in ("", "~/")
+    )
+    obsolete_git_sync = [
+        command_for(f"{prefix}{PROJECT_SKILL_HOOKS}/git_sync_policy.py")
+        for prefix in ("", "~/")
+    ]
     removed_handoff = [
         command_for(paths["removed_handoff"]),
+        *(command_for(f"{prefix}{PROJECT_SKILL_HOOKS}/handoff.py") for prefix in ("", "~/")),
         *(command_for(path) for path in REMOVED_HANDOFF_PATHS),
     ]
 
@@ -219,7 +248,7 @@ def install(start):
             obsolete_file_size,
         )
     install_codex(
-        codex, "PreToolUse", git_sync, GIT_SYNC_TIMEOUT, CODEX_SHELL_MATCHER, []
+        codex, "PreToolUse", git_sync, GIT_SYNC_TIMEOUT, CODEX_SHELL_MATCHER, obsolete_git_sync
     )
     remove_codex(codex, "Stop", removed_handoff)
 
@@ -240,7 +269,7 @@ def install(start):
         cursor,
         "beforeShellExecution",
         {"command": git_sync, "timeout": GIT_SYNC_TIMEOUT},
-        [],
+        obsolete_git_sync,
     )
     remove_cursor(cursor, "stop", removed_handoff)
 

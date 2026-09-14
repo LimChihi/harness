@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -34,6 +35,7 @@ class InstallHooksTests(unittest.TestCase):
         target.parent.mkdir(parents=True)
         shutil.copytree(SKILL, target)
         self.script = target / "scripts/install_hooks.py"
+        self.environment = os.environ.copy()
 
     def tearDown(self):
         shutil.rmtree(self.repo)
@@ -41,6 +43,7 @@ class InstallHooksTests(unittest.TestCase):
     def install(self, check=True):
         result = subprocess.run(
             ["python3", str(self.script), "--repo", str(self.repo)],
+            env=self.environment,
             capture_output=True,
             text=True,
             check=False,
@@ -334,6 +337,51 @@ class InstallHooksTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertTrue(result.stderr.startswith("install hooks:"))
                 self.assertEqual(path.read_text(encoding="utf-8"), "{")
+
+    def test_user_scope_migrates_project_hooks_and_runs_in_a_worktree(self):
+        self.install()
+        with tempfile.TemporaryDirectory(prefix="harness user home ") as directory:
+            home = Path(directory).resolve()
+            user_skill = home / ".agents/skills/setup-harness"
+            user_skill.parent.mkdir(parents=True)
+            shutil.copytree(SKILL, user_skill)
+            self.script = user_skill / "scripts/install_hooks.py"
+            self.environment["HOME"] = str(home)
+            shutil.rmtree(self.repo / ".agents/skills/setup-harness")
+            self.install()
+            paths = [".codex/hooks.json", ".cursor/hooks.json", ".git/hooks/post-commit"]
+            first = [(self.repo / path).read_bytes() for path in paths]
+            self.install()
+            self.assertEqual(first, [(self.repo / path).read_bytes() for path in paths])
+            self.assertEqual(
+                [handler["command"] for handler in self.handlers(self.config(".codex/hooks.json"), "PreToolUse")],
+                [f'/usr/bin/python3 "$HOME"/{FILE_SIZE_HOOK}', f'/usr/bin/python3 "$HOME"/{GIT_SYNC_HOOK}'],
+            )
+            self.assertEqual(
+                self.config(".cursor/hooks.json")["hooks"]["beforeShellExecution"],
+                [{"command": f'/usr/bin/python3 "$HOME"/{GIT_SYNC_HOOK}', "timeout": 5}],
+            )
+            launcher = self.repo / ".git/hooks/post-commit"
+            self.assertEqual(launcher.read_text(), f'#!/bin/sh\nexec "$HOME"/{POST_COMMIT_HOOK} "$@"\n')
+            subprocess.run(
+                ["git", "-C", str(self.repo), "-c", "core.hooksPath=/dev/null",
+                 "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                 "commit", "--allow-empty", "-m", "fixture"], check=True, capture_output=True,
+            )
+            subprocess.run(["git", "-C", str(self.repo), "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+            worktree = home / "linked worktree"
+            subprocess.run(["git", "-C", str(self.repo), "worktree", "add", "--detach", str(worktree)], check=True, capture_output=True)
+            result = subprocess.run([str(launcher)], cwd=worktree, env=self.environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.dumps({
+                "cwd": str(worktree), "session_id": "install-test", "tool_use_id": "test",
+                "hook_event_name": "PreToolUse", "tool_name": "exec",
+                "tool_input": {"command": "true"},
+            })
+            for handler in self.handlers(self.config(".codex/hooks.json"), "PreToolUse"):
+                result = subprocess.run(handler["command"], shell=True, cwd=worktree,
+                                        env=self.environment, input=payload, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_refuses_to_wire_a_skill_outside_the_repository(self):
         result = subprocess.run(
