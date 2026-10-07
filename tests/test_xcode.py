@@ -142,15 +142,47 @@ class XcodeTests(unittest.TestCase):
         self.response({"isError": True, "message": "Not authorized"}, code=7, stderr="bridge failed\n")
         result = self.call()
         self.assertEqual(result.returncode, 7)
-        self.assertIn("Not authorized", result.stdout)
-        self.assertIn("bridge failed", result.stderr)
+        self.assertEqual(result.stdout, json.loads(self.state.read_text())["stdout"])
+        self.assertEqual(result.stderr, "bridge failed\n")
         self.assertEqual(len(self.recorded()), 1)
 
     def test_mcp_error_is_failure_even_when_transport_exits_zero(self):
         self.response({"isError": True, "content": [{"type": "text", "text": "Tool failed"}]})
         result = self.call()
         self.assertEqual(result.returncode, 1)
-        self.assertIn("Tool failed", result.stdout)
+        self.assertEqual(result.stdout, json.loads(self.state.read_text())["stdout"])
+        self.assertEqual(len(self.recorded()), 1)
+
+    def test_mcp_error_is_saved_in_output_file(self):
+        raw_output = json.dumps({
+            "isError": True, "content": [{"type": "text", "text": "工具失败"}],
+        }, ensure_ascii=False, indent=2) + "\n"
+        self.state.write_text(json.dumps({
+            "stdout": raw_output, "stderr": "", "exit": 0,
+        }), encoding="utf-8")
+        output = self.root / "failed response.json"
+
+        result = self.call("--output-file", output)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(len(self.recorded()), 1)
+        self.assertEqual(output.read_text(), raw_output)
+
+    def test_nonzero_transport_output_is_saved_in_output_file(self):
+        raw_output = "upstream failure\n{not a JSON response}\n"
+        self.state.write_text(json.dumps({
+            "stdout": raw_output, "stderr": "bridge failed\n", "exit": 7,
+        }), encoding="utf-8")
+        output = self.root / "failed transport.txt"
+
+        result = self.call("--output-file", output)
+
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "bridge failed\n")
+        self.assertEqual(len(self.recorded()), 1)
+        self.assertEqual(output.read_text(), raw_output)
 
     def test_invalid_arguments_fail_before_invocation(self):
         for value in ([], "not an object", "{invalid"):

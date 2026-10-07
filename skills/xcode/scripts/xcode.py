@@ -10,7 +10,7 @@ from pathlib import Path
 CONFIG = Path(__file__).resolve().parents[1] / "mcp.json"
 
 
-def mcporter(*arguments):
+def mcporter(*arguments, stream=None):
     result = subprocess.run(
         [
             "npm", "exec", "--yes", "--package=mcporter@0.13.11", "--",
@@ -22,8 +22,11 @@ def mcporter(*arguments):
     )
     if result.stderr:
         sys.stderr.write(result.stderr)
+    if stream is not None:
+        stream.write(result.stdout)
     if result.returncode:
-        sys.stdout.write(result.stdout)
+        if stream is None:
+            sys.stdout.write(result.stdout)
         raise SystemExit(result.returncode if result.returncode > 0 else 1)
     return result.stdout
 
@@ -82,12 +85,10 @@ def main():
             if args.output_file else nullcontext(sys.stdout)
         )
         with destination as stream:
-            output = mcporter(*command)
+            output = mcporter(*command, stream=stream)
             result = json.loads(output)
             if result.get("isError") is True:
-                sys.stdout.write(output)
                 raise SystemExit(1)
-            stream.write(output)
         if args.output_file:
             print(f"Saved response: {args.output_file.resolve()}")
 
