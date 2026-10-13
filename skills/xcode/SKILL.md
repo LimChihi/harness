@@ -32,7 +32,8 @@ The CLI and some tools have separate timeouts; a CLI timeout leaves the tool's
 completion and any mutation's outcome uncertain.
 
 [Runtime setup](references/setup.md) covers first-time configuration, replacing
-an eager MCP registration, and runtime or authorization problems.
+an eager MCP registration, connection and authorization problems, workspace or
+file resolution, and unavailable verification operations.
 
 For device interaction, follow [Device interaction](references/device-interaction.md)
 to obtain the selected Xcode's upstream skill and delegate verification.
