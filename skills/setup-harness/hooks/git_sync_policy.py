@@ -49,37 +49,204 @@ class GitInvocation:
     cwd: Path
 
 
-def normalized_command(command):
-    output = []
+def heredoc_word(command, index):
+    while index < len(command) and command[index] in " \t":
+        index += 1
+    word = []
     quote = None
+    quoted = False
+    while index < len(command):
+        character = command[index]
+        if quote is None and character in " \t\r\n;&|()<>":
+            break
+        if character == "\\" and quote != "'":
+            if index + 1 == len(command):
+                raise PolicyError("incomplete heredoc delimiter")
+            if command[index + 1] != "\n":
+                word.extend(command[index : index + 2])
+                quoted = True
+            index += 2
+            continue
+        if character in "'\"":
+            if quote is None:
+                quote = character
+                quoted = True
+            elif quote == character:
+                quote = None
+        word.append(character)
+        index += 1
+    if not word:
+        raise PolicyError("missing heredoc delimiter")
+    (delimiter,) = shlex.split("".join(word))
+    return delimiter, not quoted, index
+
+
+def heredoc_body(command, index, delimiter, strip_tabs, expand):
+    body = []
+    while index < len(command):
+        line = ""
+        while True:
+            end = command.find("\n", index)
+            end = len(command) if end == -1 else end + 1
+            part = command[index:end]
+            line += part.lstrip("\t") if strip_tabs else part
+            index = end
+            content = line.removesuffix("\n")
+            backslashes = len(content) - len(content.rstrip("\\"))
+            if expand and line.endswith("\n") and backslashes % 2:
+                line = line[:-2]
+                continue
+            break
+        if line.removesuffix("\n") == delimiter:
+            return "".join(body), index
+        body.append(line)
+    raise PolicyError(f"unterminated heredoc: {delimiter}")
+
+
+def heredoc_substitutions(body):
+    substitutions = []
     index = 0
+    while index < len(body):
+        if body[index] == "\\":
+            index += 2
+            continue
+        if body.startswith("$(", index) and not body.startswith("$((", index):
+            source, nested, index = shell_source(body, index + 2, ")")
+        elif body[index] == "`":
+            source, nested, index = backtick_source(body, index + 1)
+        else:
+            index += 1
+            continue
+        substitutions.append(source)
+        substitutions.extend(nested)
+    return substitutions
+
+
+def backtick_source(command, index):
+    body = []
+    while index < len(command):
+        character = command[index]
+        if character == "`":
+            source, substitutions, _ = shell_source("".join(body))
+            return source, substitutions, index + 1
+        if character == "\\" and index + 1 < len(command):
+            if command[index + 1] not in "\\$`":
+                body.append(character)
+            body.append(command[index + 1])
+            index += 2
+            continue
+        body.append(character)
+        index += 1
+    raise PolicyError("unterminated command substitution")
+
+
+def shell_source(command, index=0, closing=None):
+    output = []
+    substitutions = []
+    heredocs = []
+    groups = []
+    quote = None
     while index < len(command):
         character = command[index]
         if character == "\\" and quote != "'" and index + 1 < len(command):
             if command[index + 1] == "\n":
-                output.append(" ")
                 index += 2
                 continue
             output.extend((character, command[index + 1]))
             index += 2
+            continue
+        if (
+            quote != "'"
+            and command.startswith("$(", index)
+            and not command.startswith("$((", index)
+        ):
+            source, nested, index = shell_source(command, index + 2, ")")
+            substitutions.append(source)
+            substitutions.extend(nested)
+            output.append("''")
+            continue
+        if quote != "'" and character == "`":
+            source, nested, index = backtick_source(command, index + 1)
+            substitutions.append(source)
+            substitutions.extend(nested)
+            output.append("''")
             continue
         if character in "'\"":
             if quote is None:
                 quote = character
             elif quote == character:
                 quote = None
-        if character == "\n" and quote is None:
-            output.append(";\n")
-        else:
             output.append(character)
+            index += 1
+            continue
+        if quote is None:
+            if character == "#" and (
+                index == 0 or command[index - 1] in " \t\r\n;&|()"
+            ):
+                end = command.find("\n", index)
+                index = len(command) if end == -1 else end
+                continue
+            if character == ")" and closing == ")" and not groups:
+                if heredocs:
+                    raise PolicyError("heredoc body must follow a newline")
+                return "".join(output), substitutions, index + 1
+            if command.startswith("$((", index) or command.startswith("((", index):
+                width = 3 if character == "$" else 2
+                output.append(command[index : index + width])
+                groups.append("arithmetic")
+                index += width
+                continue
+            if (
+                command.startswith("))", index)
+                and groups
+                and groups[-1] == "arithmetic"
+            ):
+                groups.pop()
+                output.append("))")
+                index += 2
+                continue
+            if command.startswith("<<<", index):
+                output.append("<<<")
+                index += 3
+                continue
+            if command.startswith("<<", index) and "arithmetic" not in groups:
+                strip_tabs = command.startswith("<<-", index)
+                delimiter, expand, index = heredoc_word(
+                    command, index + (3 if strip_tabs else 2)
+                )
+                prefix = "".join(output)
+                descriptor = re.search(r"(?:^|[\s;&|()])(\d+)$", prefix)
+                if descriptor:
+                    output = [prefix[: descriptor.start(1)]]
+                output.append(" ")
+                heredocs.append((delimiter, strip_tabs, expand))
+                continue
+            if character == "(":
+                groups.append("group")
+            elif character == ")" and groups:
+                groups.pop()
+            if character == "\n":
+                output.append(";\n")
+                index += 1
+                for delimiter, strip_tabs, expand in heredocs:
+                    body, index = heredoc_body(
+                        command, index, delimiter, strip_tabs, expand
+                    )
+                    if expand:
+                        substitutions.extend(heredoc_substitutions(body))
+                heredocs.clear()
+                continue
+        output.append(character)
         index += 1
-    return "".join(output)
+    if heredocs:
+        raise PolicyError(f"unterminated heredoc: {heredocs[0][0]}")
+    if closing:
+        raise PolicyError("unterminated command substitution")
+    return "".join(output), substitutions, index
 
 
 def simple_commands(command):
-    lexer = shlex.shlex(
-        normalized_command(command), posix=True, punctuation_chars="();|&"
-    )
+    lexer = shlex.shlex(command, posix=True, punctuation_chars="();|&")
     lexer.whitespace_split = True
     lexer.commenters = "#"
     commands = []
@@ -197,7 +364,13 @@ def git_invocations(command, cwd, depth=0):
     if depth > 5:
         raise PolicyError("shell command nesting exceeds five levels")
     invocations = []
-    for words in simple_commands(command):
+    source, substitutions, _ = shell_source(command)
+    commands = (
+        words
+        for part in (source, *substitutions)
+        for words in simple_commands(part)
+    )
+    for words in commands:
         name, arguments, _ = executable(words)
         if name is None:
             continue

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -149,6 +150,128 @@ class GitSyncPolicyTests(unittest.TestCase):
                 "git fetch origin && \\\n"
                 "git merge origin/main"
             )
+        )
+
+    def test_heredoc_bodies_are_not_shell_commands(self):
+        commands = (
+            "cat <<'EOF'\nuser's note\ngit merge origin/main\nEOF\n",
+            'cat <<"EOF"\nuser\'s note\n$(git merge origin/main)\nEOF\n',
+            "cat <<\\EOF\n`git pull`\nEOF\n",
+            "cat <<E'OF'\n$(git pull)\nEOF\n",
+            "cat <<EOF\nuser's note\ngit merge origin/main\nEOF\n",
+            "cat <<-'EOF'\n\tuser's note\n\tgit pull\n\tEOF\n",
+            "cat <<'FIRST' <<'SECOND'\nuser's note\nFIRST\n$(git pull)\nSECOND\n",
+            "cat <<''\nuser's note\n\n",
+            "cat <<'EOF'\nEOF extra\ngit pull\nEOF\n",
+            "cat <<EOF\nEO\\\nF\n",
+            "cat <<'EOF'\nEO\\\nF\ngit pull\nEOF\n",
+            "cat <<EOF\n$(cat <<'INNER'\nuser's note\nINNER\n)\nEOF\n",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIsNone(self.violation(command))
+
+    def test_checks_commands_after_heredocs(self):
+        commands = (
+            "cat <<'EOF'\nuser's note\nEOF\ngit merge origin/main\n",
+            "cat <<EOF\ngit status\nEOF\ngit pull\n",
+            "cat <<-'EOF'\n\tuser's note\n\tEOF\ngit pull\n",
+            "cat <<'FIRST' <<'SECOND'\nuser's note\nFIRST\nuser's note\nSECOND\ngit pull\n",
+            "cat <<'EOF'; git merge origin/main\nuser's note\nEOF\n",
+            "cat <<'EOF' | git merge origin/main\nuser's note\nEOF\n",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                reason = self.violation(command)
+                self.assertIsNotNone(reason)
+                self.assertNotIn("could not analyze", reason)
+
+    def test_heredoc_redirections_do_not_hide_git_invocations(self):
+        commands = (
+            "<<'EOF' git pull\nuser's note\nEOF\n",
+            "3<<'EOF' git pull\nuser's note\nEOF\n",
+            "git<<'EOF' merge origin/main\nuser's note\nEOF\n",
+            "git merge <<'EOF'\nuser's note\nEOF\n",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIsNotNone(self.violation(command))
+
+    def test_unquoted_heredoc_command_substitutions_are_checked(self):
+        bodies = (
+            "$(git merge origin/main)",
+            "'$(git pull)'",
+            "`git pull`",
+            '$(printf "%s" "$(git merge origin/main)")',
+            "$(git status; git pull)",
+            '$(printf "%s" ")"; git pull)',
+            "$((1 + $(git pull)))",
+            "`echo \\`git pull\\``",
+            "$(git \\\npull)",
+            "$(cat <<'INNER'\nuser's note\nINNER\ngit pull\n)",
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                reason = self.violation(f"cat <<EOF\n{body}\nEOF\n")
+                self.assertIsNotNone(reason)
+                self.assertNotIn("could not analyze", reason)
+
+    def test_heredoc_literal_expansions_do_not_trigger_policy(self):
+        bodies = (
+            "\\$(git pull)",
+            "\\`git pull\\`",
+            "$(printf '%s' 'git pull')",
+            "$(git pull --rebase)",
+            "$((1 << 2))",
+            "$(git pull --rebase)\\\ntext",
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                self.assertIsNone(self.violation(f"cat <<EOF\n{body}\nEOF\n"))
+
+    def test_heredoc_syntax_inside_quotes_and_comments_is_literal(self):
+        commands = (
+            "printf '%s' \"<<'EOF'\"; git status",
+            "# user's <<EOF\ngit status",
+            "cat <<'EOF' # user's note\ngit pull\nEOF\n",
+            "cat <<'EOF' \\\n\nuser's note\nEOF\n",
+            'printf "%s" "$(cat <<\'EOF\'\ngit pull\nEOF\n)"',
+            "cat <<<'EOF'",
+            "echo $((1 << 2))",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIsNone(self.violation(command))
+
+    def test_heredoc_hooks_allow_bodies_and_deny_following_git_commands(self):
+        command = "cat <<'EOF'\nuser's note\ngit pull\nEOF\n"
+        for payload in (self.codex_payload, self.cursor_payload):
+            with self.subTest(payload=payload.__name__):
+                self.assertIsNone(self.run_hook(payload(command)))
+                output = self.run_hook(payload(command + "git merge origin/main\n"))
+                if payload == self.codex_payload:
+                    decision = output["hookSpecificOutput"]
+                    self.assertEqual(decision["permissionDecision"], "deny")
+                    self.assertIn(
+                        "must use rebase", decision["permissionDecisionReason"]
+                    )
+                else:
+                    self.assertEqual(output["permission"], "deny")
+                    self.assertIn("must use rebase", output["agent_message"])
+
+    def test_nested_shell_heredoc_keeps_policy_checks(self):
+        safe = "cat <<'EOF'\nuser's note\nEOF\n"
+        self.assertIsNone(self.violation("bash -c " + shlex.quote(safe)))
+        self.assertIsNotNone(
+            self.violation("bash -c " + shlex.quote(safe + "git pull\n"))
+        )
+
+    def test_unterminated_heredoc_is_an_analysis_error(self):
+        output = self.run_hook(self.codex_payload("cat <<'EOF'\ntext\n"))
+        self.assertEqual(output["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn(
+            "unterminated heredoc",
+            output["hookSpecificOutput"]["permissionDecisionReason"],
         )
 
     def test_resolves_origin_head_from_git_c_directory(self):
